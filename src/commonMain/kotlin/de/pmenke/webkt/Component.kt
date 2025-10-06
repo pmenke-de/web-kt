@@ -5,11 +5,7 @@ import de.pmenke.webkt.js_interop.JsObject
 import de.pmenke.webkt.js_interop.WeakReference
 import de.pmenke.webkt.log.Logger
 import de.pmenke.webkt.log.LoggingAspect
-import de.pmenke.webkt.util.AttributeStore
-import de.pmenke.webkt.util.CallbackKey
-import de.pmenke.webkt.util.Callbacks
-import de.pmenke.webkt.util.HierarchicalAttributeStore
-import de.pmenke.webkt.util.IdGenerator
+import de.pmenke.webkt.util.*
 import de.pmenke.webkt.util.SequenceUtil.firstInstance
 import js.memory.FinalizationRegistry
 import kotlinx.browser.window
@@ -24,6 +20,8 @@ import kotlinx.html.dom.append
 import kotlinx.html.visitAndFinalize
 import org.koin.core.component.KoinScopeComponent
 import org.koin.core.component.createScope
+import org.koin.core.parameter.ParametersDefinition
+import org.koin.core.parameter.parametersOf
 import org.koin.core.scope.Scope
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLElement
@@ -214,6 +212,24 @@ abstract class Component(
         if (scope !== parent.scope) {
             scope.close()
         }
+    }
+
+    /**
+     * Specialized version of [Scope.get] which automatically adds the current component as first parameter,
+     * as it's components are supposed to be created with a reference to their parent component.
+     */
+    protected inline fun <reified T: Component> Scope.getComponent(noinline parameters: ParametersDefinition? = null): T {
+        return get<T> {
+            if (parameters == null) parametersOf(this)
+            else parameters().insert(0, this)
+        }
+    }
+
+    /**
+     * Shorthand for `child.renderTo(this@renderContents)` within [renderContents]
+     */
+    protected fun TagConsumer<Element>.render(child: Component) {
+        child.renderTo(this)
     }
 
     // normally extension-functions, but double-receiver extension-functions aren't syntactically possible
