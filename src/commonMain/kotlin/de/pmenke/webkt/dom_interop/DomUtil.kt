@@ -9,7 +9,7 @@ import org.w3c.dom.Node
 import org.w3c.dom.Storage
 
 /**
- * Utility functions for DOM manipulation and storage.
+ * Utility functions for DOM manipulation.
  */
 object DomUtil {
 
@@ -45,6 +45,31 @@ object DomUtil {
      * E.g. `cast<HTMLInputElement>().input(type, classes = "form-control")`
      */
     inline fun <reified E: Element> TagConsumer<Element>.cast() = FinalizeConsumer(this) { it, _ -> it as E }
+
+    /**
+     * Joins the given CSS class names into a single space-separated string, ignoring `null` or blank class names.
+     * This is useful for dynamically constructing the `class` attribute of an HTML element.
+     */
+    fun joinClasses(vararg classes: String?): String {
+        // prematurely optimized `joinToString` for 0..2 elements
+        return if (classes.isEmpty()) {
+            ""
+        } else if (classes.size == 1) {
+            classes[0] ?: ""
+        } else if (classes.size == 2) {
+            if (classes[0].isNullOrBlank() && classes[1].isNullOrBlank()) {
+                ""
+            } else if (classes[0].isNullOrBlank()) {
+                classes[1] ?: ""
+            } else if (classes[1].isNullOrBlank()) {
+                classes[0] ?: ""
+            } else {
+                "${classes[0]} ${classes[1]}"
+            }
+        } else {
+            classes.filter { it?.isNotBlank() == true }.joinToString(" ")
+        }
+    }
 
     /**
      * Sets a JSON-serialized value in the [Storage] under the given [key].
