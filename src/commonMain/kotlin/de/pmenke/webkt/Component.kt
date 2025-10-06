@@ -79,7 +79,7 @@ abstract class Component(
 
     // inherit scope from parent component, unless createScope is true, or we're the root-component
     override val scope: Scope =
-        parent?.scope?.takeUnless { createScope } ?: createScope("ComponentScope-${scopeIdGen()}", this)
+        parent?.scope?.takeUnless { createScope } ?: getKoin().createScope<Component>("ComponentScope-${scopeIdGen()}", this)
 
     /**
      * The parent component of this component.
