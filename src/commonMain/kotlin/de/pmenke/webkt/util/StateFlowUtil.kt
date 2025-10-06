@@ -1,16 +1,21 @@
 package de.pmenke.webkt.util
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
-import kotlinx.coroutines.flow.FlowCollector
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlin.let
-import kotlin.to
+import kotlinx.coroutines.flow.*
 
 /**
  * Utility functions for [StateFlow]s.
  */
 object StateFlowUtil {
+
+    /**
+     * Convert and launch this flow into a [StateFlow] with an initial value of `null`.
+     *
+     * Shorthand for [stateIn]`(coroutineScope, SharingStarted.Eagerly, null)`.
+     */
+    fun <T> Flow<T>.launchStateIn(coroutineScope: CoroutineScope) =
+        this.stateIn(coroutineScope, SharingStarted.Eagerly, null)
 
     /**
      * Combines this state flow with another [StateFlow], producing a new [StateFlow] whose value is derived from the
