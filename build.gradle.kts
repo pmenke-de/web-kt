@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.publish)
 }
 
 group = "de.pmenke"
@@ -30,9 +31,6 @@ kotlin {
                 }
                 output
                 sourceMaps = true
-                compilerOptions {
-                    freeCompilerArgs.add("-Xwasm-attach-js-exception")
-                }
                 cssSupport {
                     enabled = true
                 }
