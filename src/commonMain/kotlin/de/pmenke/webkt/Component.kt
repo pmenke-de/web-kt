@@ -82,6 +82,19 @@ abstract class Component(
         parent?.scope?.takeUnless { createScope } ?: getKoin().createScope<Component>("ComponentScope-${scopeIdGen()}", this)
 
     /**
+     * A [CoroutineScope] tied to this component scope's lifecycle.
+     */
+    protected val coroutineScope: ComponentCoroutineScope =
+        if (!createScope && parent != null) {
+            // reuse parent coroutine scope, as `scope.get()` would return the same instance anyway,
+            // but the lookup is much more expensive
+            parent.coroutineScope
+        } else {
+            // create a new coroutine scope, tied to our scope's lifecycle
+            scope.get()
+        }
+
+    /**
      * The parent component of this component.
      *
      * A "root" component is its own parent.
@@ -241,7 +254,6 @@ abstract class Component(
     fun <T> TagConsumer<Element>.inlineFlowComponent(
         tagName: String,
         flow: Flow<T>,
-        coroutineScope: CoroutineScope,
         initialValue: T,
         classes: String = "",
         renderBlock: ComponentReceiver.(T) -> Unit
@@ -254,7 +266,6 @@ abstract class Component(
     fun <T> TagConsumer<Element>.inlineFlowComponent(
         tagName: String,
         flow: StateFlow<T>,
-        coroutineScope: CoroutineScope,
         classes: String = "",
         renderBlock: ComponentReceiver.(T) -> Unit
     ) = inlineFlowComponent(this@Component, tagName, flow, coroutineScope, classes, renderBlock)
