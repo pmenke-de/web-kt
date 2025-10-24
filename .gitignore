@@ -1,3 +1,6 @@
+# private file
+/publishing.gradle.kts
+
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar

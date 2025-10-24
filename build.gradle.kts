@@ -16,6 +16,20 @@ repositories {
     mavenCentral()
 }
 
+// .gitignored file, which contains the reference to the publishing configuration
+// (a private repo for development, a public repo for releases, etc.)
+val publishing = file("publishing.gradle.kts")
+if (publishing.exists()) {
+    apply(from = publishing)
+} else {
+    // if not configured, publish to local maven repo
+    publishing {
+        repositories {
+            mavenLocal()
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
