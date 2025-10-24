@@ -2,6 +2,7 @@ package de.pmenke.webkt
 
 import kotlinx.browser.document
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.html.TagConsumer
 import kotlinx.html.div
@@ -10,8 +11,10 @@ import kotlinx.html.id
 import kotlinx.html.span
 import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
 import org.w3c.dom.Element
 import kotlin.js.Promise
+import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,9 +39,15 @@ class ComponentTest {
         document.body!!.appendChild(testRoot)
     }
 
+    @AfterTest
+    fun teardown() {
+        stopKoin()
+        document.getElementById("test-root")?.remove()
+    }
+
     @Test
-    fun test(): Promise<JsAny?> {
-        val comp = TestComponent()
+    fun testFlowUpdate(): Promise<JsAny?> {
+        val comp = FlowUpdateTestComponent()
         val compElement = document.createTree().run {
             comp.renderTo(this)
             finalize()
@@ -58,11 +67,33 @@ class ComponentTest {
                 testRoot.innerHTML)
         }.asPromise()
     }
+
+    @Test
+    fun testNestedInline() {
+        var asserted = false
+        class AppTest : Component(null, "app-test") {
+            override fun TagConsumer<Element>.renderContents() {
+                inlineFlowComponent("app-foo", MutableStateFlow("foo")) {
+                    val appFooComponent = component
+                    assertEquals(this@AppTest, component.parent)
+                    inlineFlowComponent("app-bar", MutableStateFlow("bar")) {
+                        assertEquals(appFooComponent, component.parent)
+                        asserted = true
+                    }
+                }
+            }
+        }
+        document.createTree().run {
+            AppTest().renderTo(this)
+            finalize()
+        }
+        assertEquals(true, asserted)
+    }
 }
 
 // a test component that generates three different states over time
 // initially "0", after 100ms "1", after 200ms "2"
-class TestComponent : Component(null, "app-test") {
+class FlowUpdateTestComponent : Component(null, "app-test") {
     override fun TagConsumer<Element>.renderContents() {
         val timedFlow = flow {
             delay(100)

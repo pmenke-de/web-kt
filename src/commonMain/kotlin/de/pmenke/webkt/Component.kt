@@ -19,7 +19,6 @@ import kotlinx.html.TagConsumer
 import kotlinx.html.dom.append
 import kotlinx.html.visitAndFinalize
 import org.koin.core.component.KoinScopeComponent
-import org.koin.core.component.createScope
 import org.koin.core.parameter.ParametersDefinition
 import org.koin.core.parameter.parametersOf
 import org.koin.core.scope.Scope
@@ -72,7 +71,7 @@ abstract class Component(
     private val tagName: String,
     private val initialAttributes: Map<String, String> = emptyMap(),
     createScope: Boolean = false,
-) : KoinScopeComponent {
+) : KoinScopeComponent, InlineFlowComponentMixin {
     // probably unique id for this component instance.
     // for now just intended for log-statements.
     private val id = "$tagName-${IdGenerator.next}"
@@ -245,28 +244,18 @@ abstract class Component(
         child.renderTo(this)
     }
 
-    // normally extension-functions, but double-receiver extension-functions aren't syntactically possible
-
-    /**
-     * Declare and render an inline child-component, that is based on a [Flow] of values.
-     * The component will be re-rendered, whenever the flow emits a new value.
-     */
-    fun <T> TagConsumer<Element>.inlineFlowComponent(
+    override fun <T> TagConsumer<Element>.inlineFlowComponent(
         tagName: String,
         flow: Flow<T>,
         initialValue: T,
-        classes: String = "",
+        classes: String,
         renderBlock: ComponentReceiver.(T) -> Unit
     ) = inlineFlowComponent(this@Component, tagName, flow, coroutineScope, initialValue, classes, renderBlock)
 
-    /**
-     * Declare and render an inline child-component, that is based on a [Flow] of values.
-     * The component will be re-rendered, whenever the flow emits a new value.
-     */
-    fun <T> TagConsumer<Element>.inlineFlowComponent(
+    override fun <T> TagConsumer<Element>.inlineFlowComponent(
         tagName: String,
         flow: StateFlow<T>,
-        classes: String = "",
+        classes: String,
         renderBlock: ComponentReceiver.(T) -> Unit
     ) = inlineFlowComponent(this@Component, tagName, flow, coroutineScope, classes, renderBlock)
 
@@ -306,6 +295,7 @@ internal class InlineComponent(
     override fun TagConsumer<Element>.renderContents() {
         renderBlock(object : ComponentReceiver, TagConsumer<Element> by this@renderContents {
             override val component: InlineComponent = this@InlineComponent
+            override val coroutineScope: CoroutineScope = this@InlineComponent.coroutineScope
         })
     }
 }
@@ -315,8 +305,60 @@ internal class InlineComponent(
  * It allows access to the [component] itself, e.g. to call [Component.requestUpdate].
  */
 @InlineComponentDSL
-interface ComponentReceiver : TagConsumer<Element> {
+interface ComponentReceiver : TagConsumer<Element>, InlineFlowComponentMixin {
     val component: Component
+    val coroutineScope: CoroutineScope
+
+    // override Component#inlineFlowComponent functions, so that nested inlineFlowComponent calls inside
+    // a Component-derived class build a proper hierarchy.
+    /**
+     * Declare and render an inline child-component, that is based on a [Flow] of values.
+     * The component will be re-rendered, whenever the flow emits a new value.
+     */
+    override fun <T> TagConsumer<Element>.inlineFlowComponent(
+        tagName: String,
+        flow: Flow<T>,
+        initialValue: T,
+        classes: String,
+        renderBlock: ComponentReceiver.(T) -> Unit
+    ) = inlineFlowComponent(component, tagName, flow, coroutineScope, initialValue, classes, renderBlock)
+
+    /**
+     * Declare and render an inline child-component, that is based on a [Flow] of values.
+     * The component will be re-rendered, whenever the flow emits a new value.
+     */
+    override fun <T> TagConsumer<Element>.inlineFlowComponent(
+        tagName: String,
+        flow: StateFlow<T>,
+        classes: String,
+        renderBlock: ComponentReceiver.(T) -> Unit
+    ) = inlineFlowComponent(component, tagName, flow, coroutineScope, classes, renderBlock)
+}
+
+/**
+ * Mixin interface to add identical [inlineFlowComponent] functions to [ComponentReceiver] and [Component].
+ * Having identical signatures ensures, that nested calls to [inlineFlowComponent] from within a [Component]-derived class
+ * build a proper component-hierarchy, as the [inlineFlowComponent] methods from the outer receivers are shadowed by default.
+ *
+ * Note: The interface isn't strictly necessary. Paying attention to having the signatures identical would be sufficient.
+ * Note 2: When kotlin context-parameters get out of `experimental` (https://kotlinlang.org/docs/context-parameters.html#how-to-enable-context-parameters),
+ *         these can be used to implement [inlineFlowComponent] only once / globally, as we can use multiple receivers then (`TagConsumer<Element> & Component`)
+ */
+interface InlineFlowComponentMixin {
+    fun <T> TagConsumer<Element>.inlineFlowComponent(
+        tagName: String,
+        flow: Flow<T>,
+        initialValue: T,
+        classes: String = "",
+        renderBlock: ComponentReceiver.(T) -> Unit
+    )
+
+    fun <T> TagConsumer<Element>.inlineFlowComponent(
+        tagName: String,
+        flow: StateFlow<T>,
+        classes: String = "",
+        renderBlock: ComponentReceiver.(T) -> Unit
+    )
 }
 
 /**
