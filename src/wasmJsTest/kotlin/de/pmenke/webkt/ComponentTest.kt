@@ -1,6 +1,5 @@
 package de.pmenke.webkt
 
-import de.pmenke.webkt.util.ComponentCoroutineScope
 import kotlinx.browser.document
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flow
@@ -64,8 +63,6 @@ class ComponentTest {
 // a test component that generates three different states over time
 // initially "0", after 100ms "1", after 200ms "2"
 class TestComponent : Component(null, "app-test") {
-    private val coroutineScope = ComponentCoroutineScope(this)
-
     override fun TagConsumer<Element>.renderContents() {
         val timedFlow = flow {
             delay(100)
@@ -73,9 +70,8 @@ class TestComponent : Component(null, "app-test") {
             delay(100)
             emit("2")
         }
-        inlineFlowComponent("app-foo", timedFlow, coroutineScope, "0") { timedValue ->
+        inlineFlowComponent("app-foo", timedFlow, "0") { timedValue ->
             span { +timedValue } // (0, 1, 2)
         }
     }
-
 }
