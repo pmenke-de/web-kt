@@ -28,7 +28,7 @@ class Callbacks {
      */
     fun <T> subscribe(key: CallbackKey<T>, callback: (T) -> Unit): CallbackHandle {
         val callbackId = idGen()
-        callbacks.getOrPut(key) { LinkedHashMap() }.put(callbackId, callback)
+        callbacks.getOrPut(key) { LinkedHashMap() }[callbackId] = callback
         return CallbackHandle(this, key, callbackId)
     }
 
@@ -63,6 +63,13 @@ class Callbacks {
      */
     // shorthand for parameterless callbacks
     fun notify(key: CallbackKey<Unit>, errorHandler: ((Throwable) -> Unit)? = null) = notify(key, Unit, errorHandler)
+
+    /**
+     * Removes all callbacks registered under the given [key].
+     */
+    fun clear(key: CallbackKey<*>) {
+        callbacks.remove(key)
+    }
 
     internal fun remove(handle: CallbackHandle) {
         if (notifying) {

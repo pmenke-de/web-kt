@@ -3,95 +3,107 @@ package de.pmenke.webkt
 import de.pmenke.webkt.dom_interop.DomUtil.removeAllChildren
 import de.pmenke.webkt.js_interop.JsObject
 import de.pmenke.webkt.js_interop.WeakReference
+import de.pmenke.webkt.koin_interop.ComponentCoroutineScope
+import de.pmenke.webkt.koin_interop.ComponentScope
 import de.pmenke.webkt.log.Logger
 import de.pmenke.webkt.log.LoggingAspect
 import de.pmenke.webkt.util.*
 import de.pmenke.webkt.util.SequenceUtil.firstInstance
-import js.memory.FinalizationRegistry
 import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.*
 import kotlinx.html.HTMLTag
 import kotlinx.html.TagConsumer
 import kotlinx.html.dom.append
 import kotlinx.html.visitAndFinalize
 import org.koin.core.component.KoinScopeComponent
+import org.koin.core.module.Module
+import org.koin.core.module.dsl.factoryOf
 import org.koin.core.parameter.ParametersDefinition
 import org.koin.core.parameter.parametersOf
 import org.koin.core.scope.Scope
+import org.koin.core.scope.ScopeCallback
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLElement
-import kotlin.concurrent.atomics.AtomicInt
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 private val LOG = Logger("de.pmenke.webkt.Component")
 
-@OptIn(ExperimentalAtomicApi::class)
-private val scopeIdGen = AtomicInt(0).let { gen -> { gen.fetchAndAdd(1) } }
-
 /**
+ * # Components
  * Components are the core building block of a webkt application.
  * They encapsulate a piece of UI, defined by their [renderContents] function.
  *
  * Each component is represented in the DOM by its own element, of type [tagName] - which thus should be sth. like `app-$componentName`.
  *
- * Components can have child-components, which are rendered within the parent's [renderContents] function.
- * Thus, they form a tree-hierarchy which mirrors the DOM-tree.
- *
  * Components can be stateful, i.e. they can hold data which influences their rendering.
  * When the state changes, the component can ask to be re-rendered via [requestUpdate].
  *
- * Components implement the [KoinScopeComponent] interface, thus they can use dependency injection to obtain their dependencies and child components.
+ * ## Scope: Dependency-Injection & Lifecycle
+ * Components implement the [KoinScopeComponent] interface. They can use dependency injection to obtain their dependencies and child components.
  * Dependencies (like services, repositories, ...) generally should be [singletons][org.koin.core.module.Module.single],
- * while child-components should be [factory][org.koin.core.module.Module.factory] definitions, as the same component-class
+ * while components should be [factory][org.koin.core.module.Module.factory] definitions, as the same component-class
  * can be used multiple times in the component-hierarchy.
  *
- * Each component is part of a koin [Scope], which can be used to define dependencies with a lifecycle tied to the component's lifecycle.
- * By default, a component inherits the scope of its parent component. But it can decide to have its own child-scope, by setting [createScope] to true.
- * This is useful, if the component wants to have dependencies with a lifecycle tied to its own lifecycle, like a [ComponentCoroutineScope][de.pmenke.webkt.util.ComponentCoroutineScope],
- * that should be cancelled, when the component is destroyed.
- * Child scopes aren't linked to their parent scopes, i.e. dependencies in the parent scope aren't automatically available in the child scope -
- * but dependencies from the root-scope are. If you want to access definitions from the parent's scope explicitly, you can do so via `this.parent.scope`.
+ * Component bind their lifecycle to the given [scope] by listening for the scope's close-callback and calling [dispose]
+ * in return (which also fires the [LifecycleCallbacks.Dispose] callback) to free any non-automatic resources.
+ *
+ * ## Child-Components
+ * Components can have child-components, which are rendered within the parent's [renderContents] function.
+ * Thus, they form a tree-hierarchy which mirrors the DOM-tree.
+ *
+ * To retrieve child-components in [renderContents] use [getComponent][RenderReceiver.getComponent], which will automatically pass the
+ * current component as its parent and the component's [currentRenderScope] as the child-components scope.
+ * Internally each call to [updateContents] or [renderTo] creates a new [currentRenderScope], disposing all child-components
+ * of the last render run automatically.
+ * You can also use [getComponent][Component.getComponent] from outside [renderContents] / a [RenderReceiver] and bind
+ * them to an instance-field (for example) which will inherit the components scope to the child-component directly
+ * (sharing the same lifecycle), which is useful, if you want some child-components to persist state across [renderContents] calls.
  *
  * Components can access their parent component via the [parent] property (Note: The "root" component is its own parent!).
  * Through helpers like [de.pmenke.webkt.util.ComponentUtil.parents] and [de.pmenke.webkt.util.SequenceUtil.firstInstance]
  * it is easy to walk up the component-hierarchy and find a specific parent-component.
  *
+ * ## Utilities
  * For a component-type independent way to pass values from parent to child components, [Component] contains an [AttributeStore],
  * which supports [hierarchical lookup][HierarchicalAttributeStore] through the component-hierarchy.
  *
  * Components also contain a [Callbacks] registry, which can be used to subscribe to lifecycle-events of the component,
  * which also can be used for custom events within component implementations.
+ *
+ * @param parent The parent component of this component. `null` is only valid for the root-component of a component tree,
+ * which is internally turned into a self-reference.
+ *
+ * When constructing via koin (e.g. [Module.factoryOf]) and instantiating via [getComponent][RenderReceiver.getComponent],
+ * the parent component is automatically passed as the first parameter.
+ * @param scope The [Scope] to bind this component's lifecycle to.
+ * When constructing via koin (e.g. [Module.factoryOf]) and instantiating via [getComponent][RenderReceiver.getComponent],
+ * the scope is automatically passed as the second parameter.
+ * @param tagName The HTML tag name to use for this component's root element in the DOM.
+ * @param initialAttributes Attributes to set on this component's element in the DOM (e.g. `class` or `data-something`).
  */
 abstract class Component(
     parent: Component?,
+    override val scope: Scope,
     private val tagName: String,
     private val initialAttributes: Map<String, String> = emptyMap(),
-    createScope: Boolean = false,
-) : KoinScopeComponent, InlineFlowComponentMixin {
-    // probably unique id for this component instance.
-    // for now just intended for log-statements.
-    private val id = "$tagName-${IdGenerator.next}"
-
-    // inherit scope from parent component, unless createScope is true, or we're the root-component
-    override val scope: Scope =
-        parent?.scope?.takeUnless { createScope } ?: getKoin().createScope<Component>("ComponentScope-${scopeIdGen()}", this)
+) : KoinScopeComponent {
 
     /**
-     * A [CoroutineScope] tied to this component scope's lifecycle.
+     * A unique identifier for this component instance.
+     * Primarily useful for logging and debugging, but also used internally to identify [ComponentScope]s.
      */
-    protected val coroutineScope: ComponentCoroutineScope =
-        if (!createScope && parent != null) {
-            // reuse parent coroutine scope, as `scope.get()` would return the same instance anyway,
-            // but the lookup is much more expensive
-            parent.coroutineScope
-        } else {
-            // create a new coroutine scope, tied to our scope's lifecycle
-            scope.get()
-        }
+    val id = "$tagName-${IdGenerator.next}"
+
+    // an opaque JsAny, that is only kept alive by this instance.
+    // used to detect garbage-collection of this instance via FinalizationRegistry in [ComponentScope]
+    private val finalizationCanary = JsObject()
+
+    /**
+     * A [CoroutineScope] tied to this component's lifecycle.
+     *
+     * Initialized on first access.
+     */
+    protected val coroutineScope by lazy { ComponentCoroutineScope(scope, WeakReference(this)) }
 
     /**
      * The parent component of this component.
@@ -107,63 +119,94 @@ abstract class Component(
      */
     private val componentContext: HierarchicalAttributeStore = HierarchicalAttributeStore(parent?.componentContext)
 
-    // reference to the result of the last render
+    /**
+     * [Scope] that determines the lifecycle of child-components retrieved during [renderContents] calls.
+     * A new scope is created for each rendering of the component, so that
+     * resources and coroutines, created by child-components during rendering,
+     * will be closed / cancelled, when the component is re-rendered.
+     */
+    private var currentRenderScope: Scope? = null
+
+    // reference to the result of the last render.
     private var element: HTMLElement? = null
+
+    /**
+     * A reference to the DOM element representing this component.
+     * Can be null, if the component hasn't been rendered yet, or has been disposed.
+     *
+     * The element may also be recreated, if the component is re-rendered by its parent.
+     */
     val currentElement get() = element
     // remember if we have an animationFrame-request pending, to avoid concurrent requests
     private var animationRequest: Int? = null
 
-    protected val callbacks = Callbacks()
-
-    // some opaque value, used as a reference for the finalization-registry
-    private val jsFinalizeToken = JsObject()
-    // remember when [destroy] was called, to avoid double-calls from finalization and explicit destroy
-    private var destroyCalled = false
+    val callbacks = Callbacks()
 
     init {
-        if (parent != null) {
-            // if our parent gets destroyed, we also must destroy ourselves.
-            // we use only a weak-reference from the parent to us, to avoid memory-leaks when our instance is forgotten.
-            val weakThis = WeakReference(this)
-            parent.callbacks.subscribe(LifecycleCallbacks.Destroy) {
-                weakThis.deref()?.destroy("parent")
-            }.let { handle ->
-                // we also remove the subscription, when we get destroyed ourselves, in case our parent lives longer than we do.
-                // so that we don't leak the weak-reference to us in the parent's callback-list (building giant "empty" callback lists).
-                callbacks.subscribe(LifecycleCallbacks.Destroy) { handle.unsubscribe() }
+        LOG.debug { "[$id] component-init in scope ${scope.id} with parent ${parent?.id}" }
+        // only take a weak reference to ourselves in the scope-callback, as the scope might outlive us,
+        // which would stop garbage collection of this component, if the scope had a strong reference.
+        //
+        // we also want the FinalizationRegistry in ComponentScope to [dispose] this component,
+        // when it gets garbage collected as early as possible.
+        val weakThis = WeakReference(this)
+        // Note: We cannot unregister the callback in case we get disposed before the scope closes.
+        //       This will lead to "empty" (`weakThis` being empty) callbacks being called when the scope finally closes.
+        //       It shouldn't be too bad, as the scope (given by the parent) should only its "short-lived" [currentRenderingScope].
+        //       Performance-problems could arise, if someone uses a long-lived scope for short-lived many components.
+        scope.registerCallback(object : ScopeCallback {
+            override fun onScopeClose(scope: Scope) {
+                weakThis.deref()?.dispose()
             }
-        }
-        // NOTE: we don't `scope.linkTo(parent.scope)`, as we don't want to
-        //       resolve components from parent scopes automatically, but only from the root scope.
-        //       if an implementations wants to resolve from the parent scope,
-        //       it can do so via `this.parent.scope`, `this.parent.get<SomeComponent>()` etc.
-        LOG.debug { "[$id] component-init in scope ${scope.id}" }
+        })
     }
 
     /**
      * renders the contents of this component into the element created for this component
      * (don't render the [tagName] element in the implementation).
      */
-    protected abstract fun TagConsumer<Element>.renderContents()
+    protected abstract fun RenderReceiver.renderContents()
+
+    /**
+     * closes the [currentRenderScope], create a new one and returns a [RenderReceiver] for rendering into it.
+     */
+    private fun TagConsumer<Element>.newRenderReceiver(): RenderReceiver {
+        currentRenderScope?.close()
+        val renderScope = ComponentScope(this@Component, finalizationCanary).scope.also {
+            this@Component.currentRenderScope = it
+        }
+        renderScope.declare(coroutineScope, secondaryTypes = listOf(CoroutineScope::class))
+        return object : RenderReceiver, TagConsumer<Element> by this {
+            override val scope: Scope = renderScope
+            override val component: Component = this@Component
+            override val coroutineScope: CoroutineScope = renderScope.get()
+        }
+    }
 
     /**
      * renders this component into the given [TagConsumer], which usually is the receiver of [renderContents] of the parent component.
+     *
+     * Note: Use [render] instead of `component.renderTo(this@renderContents)` within [renderContents],
+     *       as the former is more concise.
      */
     fun renderTo(consumer: TagConsumer<Element>): HTMLElement {
         LOG.debug(LoggingAspect.RENDERING) { "[$id] renderTo" }
         val tag = HTMLTag(tagName, consumer, initialAttributes, inlineTag = false, emptyTag = false)
-        val element = tag.visitAndFinalize(consumer) { consumer.renderContents() } as HTMLElement
-        // back-reference to us, so we can find our component from the DOM element.
-        // and more importantly, keep us from being garbage collected, as long as the element is in the DOM.
+        val element = tag.visitAndFinalize(consumer) { consumer.newRenderReceiver().renderContents() } as HTMLElement
+        // back-reference to us, so we can find our component from the DOM element
+        // and keep us from being garbage collected, as long as the element is reachable.
         element.componentKt = this
-        // register for finalization, so we get destroyed, when the element is removed from the DOM and garbage collected.
-        if (this.element != null) {
-            componentFinalizationRegistry.unregister(jsFinalizeToken)
-        }
-        componentFinalizationRegistry.register(element, this.toJsReference(), jsFinalizeToken)
         this.element = element
+        // callback for listeners which want to modify `element` after rendering
         callbacks.notify(LifecycleCallbacks.AfterRender)
         return element
+    }
+
+    /**
+     * Shorthand for `child.renderTo(this@renderContents)` within [renderContents]
+     */
+    protected fun TagConsumer<Element>.render(child: Component) {
+        child.renderTo(this)
     }
 
     /**
@@ -191,11 +234,11 @@ abstract class Component(
      * This function is called as a result of calling [requestUpdate] on the next animation frame.
      */
     protected open fun updateContents() {
-        val e = element ?: return
-        LOG.debug(LoggingAspect.RENDERING, element) { "[$id] updateContents" }
+        val e = currentElement ?: return
+        LOG.debug(LoggingAspect.RENDERING, currentElement) { "[$id] updateContents" }
         e.removeAllChildren()
         e.append {
-            renderContents()
+            newRenderReceiver().renderContents()
             try {
                 finalize()
             } catch (e: IllegalStateException) {
@@ -203,61 +246,25 @@ abstract class Component(
                 if (e.message != "We can't finalize as there was no tags") throw e
             }
         }
+        // callback for listeners which want to modify `element` after rendering
         callbacks.notify(LifecycleCallbacks.AfterRender)
     }
 
     /**
-     * Destroys this component, calling all registered destroy-callbacks and closing its koin scope (if it has its own).
-     * This method's primary task is to release resources and avoid resource-leaks.
-     * This won't remove the component's element from the DOM etc.
-     *
-     * Thus, it's normally not to be called from user-code, but rather from the finalization-registry or the parent-component.
+     * Disposes this component, firing the [LifecycleCallbacks.Dispose] callback,
+     * closing the [currentRenderScope] and removing the references to/from the DOM element,
+     * so that detached components can be garbage collected.
      */
-    fun destroy(source: String = "user-code") {
-        LOG.debug(LoggingAspect.LIFECYCLE, element) { "[$id] component-destroy($destroyCalled) called from $source" }
-        if (destroyCalled) return
-        destroyCalled = true
-        callbacks.notify(LifecycleCallbacks.Destroy) { ex ->
-            LOG.error(LoggingAspect.LIFECYCLE, "[$id] exception in Component.destroy of", element, ex.stackTraceToString())
+    private fun dispose() {
+        LOG.debug { "[$id] dispose" }
+        callbacks.notify(LifecycleCallbacks.Dispose) { ex ->
+            LOG.error { "[$id] uncaught exception during dispose callback: ${ex.stackTraceToString()}" }
         }
-        componentFinalizationRegistry.unregister(jsFinalizeToken)
-        if (scope !== parent.scope) {
-            scope.close()
-        }
+        currentRenderScope?.close()
+        currentRenderScope = null
+        element?.componentKt = null
+        element = null
     }
-
-    /**
-     * Specialized version of [Scope.get] which automatically adds the current component as first parameter,
-     * as it's components are supposed to be created with a reference to their parent component.
-     */
-    protected inline fun <reified T: Component> Scope.getComponent(noinline parameters: ParametersDefinition? = null): T {
-        return get<T> {
-            if (parameters == null) parametersOf(this)
-            else parameters().insert(0, this)
-        }
-    }
-
-    /**
-     * Shorthand for `child.renderTo(this@renderContents)` within [renderContents]
-     */
-    protected fun TagConsumer<Element>.render(child: Component) {
-        child.renderTo(this)
-    }
-
-    override fun <T> TagConsumer<Element>.inlineFlowComponent(
-        tagName: String,
-        flow: Flow<T>,
-        initialValue: T,
-        classes: String,
-        renderBlock: ComponentReceiver.(T) -> Unit
-    ) = inlineFlowComponent(this@Component, tagName, flow, coroutineScope, initialValue, classes, renderBlock)
-
-    override fun <T> TagConsumer<Element>.inlineFlowComponent(
-        tagName: String,
-        flow: StateFlow<T>,
-        classes: String,
-        renderBlock: ComponentReceiver.(T) -> Unit
-    ) = inlineFlowComponent(this@Component, tagName, flow, coroutineScope, classes, renderBlock)
 
     companion object {
         object LifecycleCallbacks {
@@ -268,17 +275,119 @@ abstract class Component(
             val AfterRender = CallbackKey("afterRender")
 
             /**
-             * Fired when the component is being destroyed, either because its parent is being destroyed,
-             * or because the component's element was removed from the DOM and garbage collected.
-             * Intended use is to release resources, like cancelling coroutines, closing websockets, ...
+             * Fired when the component is being disposed (its scope is closed).
+             * Intended use is to clean up resources held by the component.
              */
-            val Destroy = CallbackKey("destroy")
+            val Dispose = CallbackKey("dispose")
         }
     }
 }
 
-private val componentFinalizationRegistry = FinalizationRegistry<JsReference<Component>> {
-    it.get().destroy("finalization")
+@ComponentDSL
+interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
+    /**
+     * The current rendering [Scope] for this component.
+     * A new scope is created for each rendering of the component, so that
+     * resources and coroutines, created by child-components during rendering,
+     * will be closed / cancelled, when the component is re-rendered.
+     *
+     * Same as [Component.currentRenderScope] within [Component.renderContents].
+     */
+    override val scope: Scope
+
+    /**
+     * Reference to the current rendering [Component].
+     *
+     * Primarily used to create child-components with the correct parent reference.
+     */
+    val component: Component
+
+    /**
+     * The [CoroutineScope] in the [Component.currentRenderScope] for this component.
+     * This coroutine scope is tied to the current rendering [scope], so that
+     * coroutines launched in this scope will be cancelled, when the component is re-rendered.
+     *
+     * Primarily used in [inlineFlowComponent]s, to launch collectors for the given [Flow]s,
+     * as they should be cancelled, when the component is re-rendered and the old inline-components are disposed.
+     */
+    val coroutineScope: CoroutineScope
+
+    /**
+     * Declare and render an inline child-component, that is based on a [Flow] of values.
+     * The component will be re-rendered, whenever the flow emits a new value.
+     *
+     * The component inherits the current [coroutineScope] and [renderingScope][scope].
+     *
+     * @param tagName The HTML tag name to use for the inline component's root element in the DOM.
+     * @param flow The [Flow] of values to base the inline component on.
+     * @param initialValue The initial value to use for the inline component before the flow emits its first value.
+     * @param classes Optional CSS classes to set on the inline component's element in the DOM.
+     * @param renderBlock The rendering block for the inline component, which receives the current value from the flow.
+     * This block essentially is the implementation of [Component.renderContents] for the inline component.
+     */
+    fun <T> inlineFlowComponent(
+        tagName: String,
+        flow: Flow<T>,
+        initialValue: T,
+        classes: String = "",
+        renderBlock: RenderReceiver.(T) -> Unit) {
+        var currentValue: T = initialValue
+        val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
+            renderBlock(currentValue)
+        }
+        flow.onEach { value ->
+            currentValue = value
+            component.requestUpdate()
+        }.launchIn(coroutineScope)
+        component.renderTo(this)
+    }
+
+    /**
+     * Declare and render an inline child-component, that is based on a [Flow] of values.
+     * The component will be re-rendered, whenever the flow emits a new value.
+     *
+     * The component inherits the current [coroutineScope] and [renderingScope][scope].
+     *
+     * @param tagName The HTML tag name to use for the inline component's root element in the DOM.
+     * @param flow The [Flow] of values to base the inline component on.
+     * @param classes Optional CSS classes to set on the inline component's element in the DOM.
+     * @param renderBlock The rendering block for the inline component, which receives the current value from the flow.
+     * This block essentially is the implementation of [Component.renderContents] for the inline component.
+     */
+    fun <T> inlineFlowComponent(
+        tagName: String,
+        flow: StateFlow<T>,
+        classes: String = "",
+        renderBlock: RenderReceiver.(T) -> Unit) {
+        val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
+            renderBlock(flow.value)
+        }
+        // drop the first value, as we already rendered it initially
+        flow.drop(1).onEach { component.requestUpdate() }.launchIn(coroutineScope)
+        component.renderTo(this)
+    }
+}
+
+/**
+ * Specialized version of [Scope.get] which automatically adds the current component and scope as leading parameters,
+ * as components are supposed to be created with a reference to their parent component and scope.
+ */
+inline fun <reified T: Component> RenderReceiver.getComponent(noinline parameters: ParametersDefinition? = null): T {
+    return scope.get<T> {
+        if (parameters == null) parametersOf(component, scope)
+        else parameters().insert(0, component).insert(1, scope)
+    }
+}
+
+/**
+ * Specialized version of [Scope.get] which automatically adds the current component and scope as leading parameters,
+ * as components are supposed to be created with a reference to their parent component and scope.
+ */
+inline fun <reified T: Component> Component.getComponent(noinline parameters: ParametersDefinition? = null): T {
+    return scope.get<T> {
+        if (parameters == null) parametersOf(this, scope)
+        else parameters().insert(0, this).insert(1, scope)
+    }
 }
 
 /**
@@ -287,119 +396,14 @@ private val componentFinalizationRegistry = FinalizationRegistry<JsReference<Com
  */
 internal class InlineComponent(
     parent: Component?,
+    scope: Scope,
     tagName: String,
     initialAttributes: Map<String, String>,
-    createScope: Boolean = false,
-    private val renderBlock: ComponentReceiver.() -> Unit
-) : Component(parent, tagName, initialAttributes, createScope) {
-    override fun TagConsumer<Element>.renderContents() {
-        renderBlock(object : ComponentReceiver, TagConsumer<Element> by this@renderContents {
-            override val component: InlineComponent = this@InlineComponent
-            override val coroutineScope: CoroutineScope = this@InlineComponent.coroutineScope
-        })
+    private val renderBlock: RenderReceiver.() -> Unit
+) : Component(parent, scope, tagName, initialAttributes) {
+    override fun RenderReceiver.renderContents() {
+        renderBlock()
     }
-}
-
-/**
- * combination of [Component] and [TagConsumer], which is the receiver of the [renderBlock] of an [InlineComponent].
- * It allows access to the [component] itself, e.g. to call [Component.requestUpdate].
- */
-@InlineComponentDSL
-interface ComponentReceiver : TagConsumer<Element>, InlineFlowComponentMixin {
-    val component: Component
-    val coroutineScope: CoroutineScope
-
-    // override Component#inlineFlowComponent functions, so that nested inlineFlowComponent calls inside
-    // a Component-derived class build a proper hierarchy.
-    /**
-     * Declare and render an inline child-component, that is based on a [Flow] of values.
-     * The component will be re-rendered, whenever the flow emits a new value.
-     */
-    override fun <T> TagConsumer<Element>.inlineFlowComponent(
-        tagName: String,
-        flow: Flow<T>,
-        initialValue: T,
-        classes: String,
-        renderBlock: ComponentReceiver.(T) -> Unit
-    ) = inlineFlowComponent(component, tagName, flow, coroutineScope, initialValue, classes, renderBlock)
-
-    /**
-     * Declare and render an inline child-component, that is based on a [Flow] of values.
-     * The component will be re-rendered, whenever the flow emits a new value.
-     */
-    override fun <T> TagConsumer<Element>.inlineFlowComponent(
-        tagName: String,
-        flow: StateFlow<T>,
-        classes: String,
-        renderBlock: ComponentReceiver.(T) -> Unit
-    ) = inlineFlowComponent(component, tagName, flow, coroutineScope, classes, renderBlock)
-}
-
-/**
- * Mixin interface to add identical [inlineFlowComponent] functions to [ComponentReceiver] and [Component].
- * Having identical signatures ensures, that nested calls to [inlineFlowComponent] from within a [Component]-derived class
- * build a proper component-hierarchy, as the [inlineFlowComponent] methods from the outer receivers are shadowed by default.
- *
- * Note: The interface isn't strictly necessary. Paying attention to having the signatures identical would be sufficient.
- * Note 2: When kotlin context-parameters get out of `experimental` (https://kotlinlang.org/docs/context-parameters.html#how-to-enable-context-parameters),
- *         these can be used to implement [inlineFlowComponent] only once / globally, as we can use multiple receivers then (`TagConsumer<Element> & Component`)
- */
-interface InlineFlowComponentMixin {
-    fun <T> TagConsumer<Element>.inlineFlowComponent(
-        tagName: String,
-        flow: Flow<T>,
-        initialValue: T,
-        classes: String = "",
-        renderBlock: ComponentReceiver.(T) -> Unit
-    )
-
-    fun <T> TagConsumer<Element>.inlineFlowComponent(
-        tagName: String,
-        flow: StateFlow<T>,
-        classes: String = "",
-        renderBlock: ComponentReceiver.(T) -> Unit
-    )
-}
-
-/**
- * Declare and render an inline child-component, that is based on a [Flow] of values.
- * The component will be re-rendered, whenever the flow emits a new value.
- */
-fun <T> TagConsumer<Element>.inlineFlowComponent(
-    parent: Component?,
-    tagName: String,
-    flow: Flow<T>,
-    coroutineScope: CoroutineScope,
-    initialValue: T,
-    classes: String = "",
-    renderBlock: ComponentReceiver.(T) -> Unit) {
-    var currentValue: T = initialValue
-    val component = InlineComponent(parent, tagName, classes.toInitialAttributes()) {
-        renderBlock(currentValue)
-    }
-    flow.onEach {
-        value -> currentValue = value
-        component.requestUpdate()
-    }.launchIn(coroutineScope)
-    component.renderTo(this)
-}
-
-/**
- * Declare and render an inline child-component, that is based on a [Flow] of values.
- * The component will be re-rendered, whenever the flow emits a new value.
- */
-fun <T> TagConsumer<Element>.inlineFlowComponent(
-    parent: Component?,
-    tagName: String,
-    flow: StateFlow<T>,
-    coroutineScope: CoroutineScope,
-    classes: String = "",
-    renderBlock: ComponentReceiver.(T) -> Unit) {
-    val component = InlineComponent(parent, tagName, classes.toInitialAttributes()) {
-        renderBlock(flow.value)
-    }
-    flow.onEach { component.requestUpdate() }.launchIn(coroutineScope)
-    component.renderTo(this)
 }
 
 @Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE", "UNCHECKED_CAST", "CAST_NEVER_SUCCEEDS")
@@ -410,12 +414,12 @@ var HTMLElement.componentKt: Component?
     }
 
 /**
- * DSL Marker annotation for [ComponentReceiver].
+ * DSL Marker annotation for [RenderReceiver].
  * Disallows unexpected / unwanted implicit access to koin-/coroutine-scopes of outer components,
  * when nesting inline components.
  */
 @DslMarker
-annotation class InlineComponentDSL
+annotation class ComponentDSL
 
 /**
  * convenience function to create an initial attributes map with just the css classes of component
