@@ -359,11 +359,16 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
         flow: StateFlow<T>,
         classes: String = "",
         renderBlock: RenderReceiver.(T) -> Unit) {
+        val weakInitialValue = flow.value?.let { WeakReference(it) }
         val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
             renderBlock(flow.value)
         }
-        // drop the first value, as we already rendered it initially
-        flow.drop(1).onEach { component.requestUpdate() }.launchIn(coroutineScope)
+        // drop the first value, as we already rendered it initially.
+        // just using `drop(1)` can lead to a race-condition, if the flow emits a new value before we subscribe, losing that value.
+        // thus we use `dropWhile` to skip only the exact initial value (without creating a strong reference to it).
+        flow.dropWhile { weakInitialValue?.deref() === it }
+            .onEach { component.requestUpdate() }
+            .launchIn(coroutineScope)
         component.renderTo(this)
     }
 }
