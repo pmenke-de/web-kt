@@ -18,6 +18,60 @@ object StateFlowUtil {
         this.stateIn(coroutineScope, SharingStarted.Eagerly, null)
 
     /**
+     * Maps the values of this [StateFlow] using the provided [transform] function,
+     * producing a new [StateFlow] of the transformed values.
+     */
+    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+    fun <T, R> StateFlow<T>.mapState(transform: (T) -> R): StateFlow<R> = object : StateFlow<R> {
+        private var lastInput: T = this@mapState.value
+        private var lastValue: R = transform(this@mapState.value)
+
+        override val value: R
+            get() = this@mapState.value.let { currentInput ->
+                if (currentInput == lastInput) lastValue
+                else transform(currentInput).also {
+                    lastInput = currentInput
+                    lastValue = it
+                }
+            }
+
+        override suspend fun collect(collector: FlowCollector<R>): Nothing {
+            this@mapState.collect { collector.emit(transform(it)) }
+        }
+
+        override val replayCache: List<R>
+            get() = listOf(value)
+    }
+
+    /**
+     * Maps the values of this [StateFlow] using the provided [transform] function,
+     * which returns another [StateFlow], producing a new [StateFlow] that reflects the
+     * latest values from the most recently emitted inner [StateFlow].
+     */
+    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+    fun <T, R> StateFlow<T>.flatMapStateLatest(transform: (T) -> StateFlow<R>): StateFlow<R> = object : StateFlow<R> {
+        private var lastInput = this@flatMapStateLatest.value
+        private var lastSubInput: StateFlow<R> = transform(lastInput)
+
+        override val value: R
+            get() = this@flatMapStateLatest.value.let { currentInput ->
+                (if (currentInput == lastInput) lastSubInput
+                else transform(currentInput).also { currentSubInput ->
+                    lastInput = currentInput
+                    lastSubInput = currentSubInput
+                }).value
+            }
+
+        override suspend fun collect(collector: FlowCollector<R>): Nothing {
+            this@flatMapStateLatest.collectLatest { transform(it).collect(collector) }
+            throw IllegalStateException("unreachable")
+        }
+
+        override val replayCache: List<R>
+            get() = listOf(value)
+    }
+
+    /**
      * Combines this state flow with another [StateFlow], producing a new [StateFlow] whose value is derived from the
      * latest values of both input flows using the provided [combiner] function.
      * The resulting [StateFlow] updates its value whenever either of the input flows emits a new value.
@@ -96,6 +150,30 @@ object StateFlowUtil {
             throw IllegalStateException("unreachable")
         }
         override val replayCache: List<E>
+            get() = listOf(value)
+    }
+
+    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+    fun <T, R> Iterable<StateFlow<T>>.stateCombine(combiner: (List<T>)->R): StateFlow<R> = object : StateFlow<R> {
+        private var lastInputs: List<T> = this@stateCombine.map { it.value }
+        private var lastValue: R = combiner(lastInputs)
+        override val value: R get() = this@stateCombine.map { it.value }.let { currentInputs ->
+            if (currentInputs != lastInputs) {
+                lastInputs = currentInputs
+                lastValue = combiner(lastInputs)
+            }
+            lastValue
+        }
+        override suspend fun collect(collector: FlowCollector<R>): Nothing {
+            // combine wants reified T to construct a typed array.
+            // we just trust, that Array<Any?> will do.
+            @Suppress("UNCHECKED_CAST")
+            combine<Any?, R>(this@stateCombine) { items ->
+                combiner(items.toList() as List<T>)
+            }.collect(collector)
+            throw IllegalStateException("unreachable")
+        }
+        override val replayCache: List<R>
             get() = listOf(value)
     }
 

@@ -1,5 +1,7 @@
 package de.pmenke.webkt.util
 
+import de.pmenke.webkt.util.StateFlowUtil.flatMapStateLatest
+import de.pmenke.webkt.util.StateFlowUtil.mapState
 import de.pmenke.webkt.util.StateFlowUtil.times
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -8,9 +10,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlin.js.Promise
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.milliseconds
 
 class StateFlowUtilTest {
 
@@ -67,4 +71,48 @@ class StateFlowUtilTest {
         }.asPromise()
     }
 
+    @Test
+    fun testMapState(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        val inFlow = MutableStateFlow(1)
+        val mappedFlow = inFlow.mapState { "Value is $it" }
+        val collector = mutableListOf<String>()
+        val job = launch {
+            mappedFlow.collect { collector.add(it) }
+        }
+        assertEquals("Value is 1", mappedFlow.value)
+        delay(10)
+        inFlow.value = 2
+        assertEquals("Value is 2", mappedFlow.value)
+        delay(10)
+        assertEquals(listOf("Value is 1", "Value is 2"), collector)
+        job.cancel()
+    }.asPromise()
+
+    @Test
+    fun flatMapState(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        val inFlow = MutableStateFlow(MutableStateFlow(1))
+        val mappedFlow = inFlow.flatMapStateLatest { inner -> inner.mapState { "Value is $it" } }
+        val collector = mutableListOf<String>()
+        val job = launch {
+            mappedFlow.collect { collector.add(it) }
+        }
+        delay(10)
+        assertEquals("Value is 1", mappedFlow.value)
+        inFlow.value.value = 2
+        assertEquals("Value is 2", mappedFlow.value)
+        delay(10)
+        inFlow.value = MutableStateFlow(3)
+        assertEquals("Value is 3", mappedFlow.value)
+        delay(10)
+        inFlow.value.value = 4
+        assertEquals("Value is 4", mappedFlow.value)
+        delay(10)
+        assertEquals(listOf(
+            "Value is 1",
+            "Value is 2",
+            "Value is 3",
+            "Value is 4",
+        ), collector)
+        job.cancel()
+    }.asPromise()
 }
