@@ -148,22 +148,38 @@ interface CachingFlowMap<K, T> {
 /**
  * Mutable implementation of [CachingFlowMap], intended for use in server request handlers.
  * Frontend components should be handed out a read-only view of this map via [asCachingFlowMap].
+ * @param supplier The function to call to generate a new value for a given key.
+ * @param validity The duration for which the cached value is valid.
+ * @param keepAlive The duration for which the map should ensure that an entry ([CachingFlow]) is kept alive,
+ *                  even if there are no external references to it.
+ * @implementation If [keepAlive] is non-zero, a maintenance job will run every [keepAlive] duration, which drops
+ *                 strong references to entries, which haven't been accessed for at least [keepAlive] duration.
  */
 class MutableCachingFlowMap<K, T>(
     private val supplier: suspend (K) -> T,
     private val validity: Duration = Duration.INFINITE,
+    private val keepAlive: Duration = Duration.ZERO,
 ) : CachingFlowMap<K, T> {
-    private val state = mutableMapOf<K, WeakReference<MutableCachingFlow<T>>>()
+    private val state = mutableMapOf<K, CacheFlowMapEntry<T>>()
     private val deadKeys = mutableSetOf<K>()
-    private fun makeFlow(key: K) = MutableCachingFlowImpl({ supplier(key) }, validity)
+
+    init {
+        require(keepAlive >= Duration.ZERO) { "keepAlive must be non-negative" }
+        if (keepAlive > Duration.ZERO) {
+            val weakThis = WeakReference<MutableCachingFlowMap<*, *>>(this)
+            @OptIn(DelicateCoroutinesApi::class)
+            GlobalScope.launch { maintenanceJob(weakThis, keepAlive) }
+        }
+    }
+
+    private fun makeFlow(key: K): CacheFlowMapEntry<T> {
+        val cachingFlow = MutableCachingFlowImpl({ supplier(key) }, validity)
+        return if (keepAlive > Duration.ZERO) StrongCacheFlowMapEntry(cachingFlow)
+               else CacheFlowMapEntry(WeakReference(cachingFlow))
+    }
 
     override fun get(key: K): MutableCachingFlow<T> {
-        val ref = state[key]
-        return if (ref != null) {
-            ref.deref() ?: makeFlow(key).also { state[key] = WeakReference(it) }
-        } else {
-            makeFlow(key).also { state[key] = WeakReference(it) }
-        }.also { removeDeadKeys() }
+        return (state[key]?.deref() ?: makeFlow(key).also { state[key] = it }.deref()!!).also { removeDeadKeys() }
     }
 
     /**
@@ -196,8 +212,48 @@ class MutableCachingFlowMap<K, T>(
             null
         }
     }
+
+    private fun maintain() {
+        val now = Clock.System.now()
+        state.values.forEach { entry ->
+            (entry as? StrongCacheFlowMapEntry<T>)?.clearExpired(now, keepAlive)
+        }
+    }
+
+    companion object {
+        private suspend fun maintenanceJob(instance: WeakReference<MutableCachingFlowMap<*, *>>, interval: Duration) {
+            while(true) {
+                delay(interval)
+                instance.deref()?.maintain() ?: break
+            }
+        }
+    }
 }
 
 private class ReadOnlyCachingFlowMap<K, T>(private val mutable: MutableCachingFlowMap<K, T>) : CachingFlowMap<K, T> {
     override fun get(key: K): CachingFlow<T> = mutable[key].asCachingFlow()
+}
+
+private open class CacheFlowMapEntry<T>(
+    private val weakEntry: WeakReference<MutableCachingFlow<T>>,
+) {
+    open fun deref(): MutableCachingFlow<T>? {
+        return weakEntry.deref()
+    }
+}
+
+private class StrongCacheFlowMapEntry<T>(cachingFlow: MutableCachingFlow<T>) : CacheFlowMapEntry<T>(WeakReference(cachingFlow)) {
+    private var strongEntry: MutableCachingFlow<T>? = cachingFlow
+    private var lastAccess: Instant = Clock.System.now()
+
+    override fun deref(): MutableCachingFlow<T>? {
+        lastAccess = Clock.System.now()
+        return strongEntry ?: (super.deref()?.also { strongEntry = it })
+    }
+
+    fun clearExpired(now: Instant, keepAlive: Duration) {
+        if (lastAccess + keepAlive < now) {
+            strongEntry = null
+        }
+    }
 }
