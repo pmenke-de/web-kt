@@ -1,6 +1,6 @@
 package de.pmenke.webkt.js_interop
 
-import js.core.JsPrimitives.toByte
+import js.core.JsPrimitives.toKotlinByte
 import js.typedarrays.Uint8Array
 import org.w3c.dom.ItemArrayLike
 import org.w3c.dom.events.EventTarget
@@ -57,7 +57,7 @@ object JsUtil {
 
     fun Uint8Array<*>.toBase64Url(): String {
         // would be nice to use `toBase64`, but that's not widely supported in JS (only Firefox and Safari atm)
-        val bytes = ByteArray(length) { index -> this[index].toByte() }
+        val bytes = ByteArray(length) { index -> this[index].toKotlinByte() }
         return base64Url.encode(bytes)
     }
 }

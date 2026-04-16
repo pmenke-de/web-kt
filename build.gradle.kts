@@ -33,6 +33,7 @@ if (publishing.exists()) {
 kotlin {
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
+        optIn.add("kotlin.js.ExperimentalWasmJsInterop")
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
     wasmJs {
