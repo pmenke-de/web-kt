@@ -117,7 +117,7 @@ abstract class Component(
     /**
      * A store for attributes, which can be used to pass values from parent to child components.
      */
-    private val componentContext: HierarchicalAttributeStore = HierarchicalAttributeStore(parent?.componentContext)
+    protected val componentContext: HierarchicalAttributeStore = HierarchicalAttributeStore(parent?.componentContext)
 
     /**
      * [Scope] that determines the lifecycle of child-components retrieved during [renderContents] calls.
@@ -180,6 +180,7 @@ abstract class Component(
             override val scope: Scope = renderScope
             override val component: Component = this@Component
             override val coroutineScope: CoroutineScope = renderScope.get()
+            override val componentContext: HierarchicalAttributeStore = this@Component.componentContext
         }
     }
 
@@ -311,6 +312,11 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
      * as they should be cancelled, when the component is re-rendered and the old inline-components are disposed.
      */
     val coroutineScope: CoroutineScope
+
+    /**
+     * The [HierarchicalAttributeStore] for the current rendering [Component], which supports hierarchical lookup through the component-hierarchy.
+     */
+    val componentContext: HierarchicalAttributeStore
 
     /**
      * Declare and render an inline child-component, that is based on a [Flow] of values.
