@@ -94,8 +94,11 @@ class ControlValue<T: Any?>(initialValue: T) {
         currentEventName = event
         boundProperty = property
         eventTarget.addEventListener(event, ::onChange)
+        eventTarget.addEventListener("focus", ::onTouched)
+        eventTarget.addEventListener("blur", ::onTouched)
         // propagate initial value (this isn't a noop)
         value = value
+        dirty = false
     }
 
     private fun onChange(event: Event) {
