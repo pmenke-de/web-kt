@@ -1,12 +1,7 @@
 package de.pmenke.webkt.util
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
-import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * Utility functions for [StateFlow]s.
@@ -40,7 +35,9 @@ object StateFlowUtil {
             }
 
         override suspend fun collect(collector: FlowCollector<R>): Nothing {
-            this@mapState.collect { collector.emit(transform(it)) }
+            coroutineScope {
+                this@mapState.map { transform(it) }.stateIn(this).collect(collector)
+            }
         }
 
         override val replayCache: List<R>
@@ -52,7 +49,7 @@ object StateFlowUtil {
      * which returns another [StateFlow], producing a new [StateFlow] that reflects the
      * latest values from the most recently emitted inner [StateFlow].
      */
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+    @OptIn(ExperimentalForInheritanceCoroutinesApi::class, ExperimentalCoroutinesApi::class)
     fun <T, R> StateFlow<T>.flatMapStateLatest(transform: (T) -> StateFlow<R>): StateFlow<R> = object : StateFlow<R> {
         private var lastInput = this@flatMapStateLatest.value
         private var lastSubInput: StateFlow<R> = transform(lastInput)
@@ -67,8 +64,9 @@ object StateFlowUtil {
             }
 
         override suspend fun collect(collector: FlowCollector<R>): Nothing {
-            this@flatMapStateLatest.collectLatest { transform(it).collect(collector) }
-            throw IllegalStateException("unreachable @flatMapStateLatest#collect")
+            coroutineScope {
+                this@flatMapStateLatest.flatMapLatest { transform(it) }.stateIn(this).collect(collector)
+            }
         }
 
         override val replayCache: List<R>
