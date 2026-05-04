@@ -18,7 +18,7 @@ private val LOG = Logger("de.pmenke.webkt.koin_interop.ComponentCoroutineScope")
  * [dom element][Component.currentElement], to allow for easy identification of the source via browser developer tools.
  */
 class ComponentCoroutineScope internal constructor(scope: Scope, componentRef: WeakReference<Component>)
-    : CoroutineScope by (CoroutineScope(Dispatchers.Default) + exceptionHandler(componentRef)) {
+    : CoroutineScope by (CoroutineScope(Dispatchers.Default) + SupervisorJob() + exceptionHandler(componentRef)) {
         init {
             scope.registerCallback(object : ScopeCallback {
                 override fun onScopeClose(scope: Scope) {
