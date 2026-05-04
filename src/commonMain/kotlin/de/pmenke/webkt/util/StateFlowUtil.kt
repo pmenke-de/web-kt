@@ -2,7 +2,11 @@ package de.pmenke.webkt.util
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.suspendCoroutine
 
 /**
  * Utility functions for [StateFlow]s.
@@ -64,7 +68,7 @@ object StateFlowUtil {
 
         override suspend fun collect(collector: FlowCollector<R>): Nothing {
             this@flatMapStateLatest.collectLatest { transform(it).collect(collector) }
-            throw IllegalStateException("unreachable")
+            throw IllegalStateException("unreachable @flatMapStateLatest#collect")
         }
 
         override val replayCache: List<R>
@@ -90,7 +94,7 @@ object StateFlowUtil {
         }
         override suspend fun collect(collector: FlowCollector<C>): Nothing {
             combine(this@stateCombine, flowB) { a, b -> combiner(a, b) }.collect(collector)
-            throw IllegalStateException("unreachable")
+            throw IllegalStateException("unreachable @stateCombine2#collect")
         }
         override val replayCache: List<C>
             get() = listOf(value)
@@ -118,7 +122,7 @@ object StateFlowUtil {
         }
         override suspend fun collect(collector: FlowCollector<D>): Nothing {
             combine(this@stateCombine, flowB, flowC) { a, b, c -> combiner(a, b, c) }.collect(collector)
-            throw IllegalStateException("unreachable")
+            throw IllegalStateException("unreachable @stateCombine3#collect")
         }
         override val replayCache: List<D>
             get() = listOf(value)
@@ -147,7 +151,7 @@ object StateFlowUtil {
         }
         override suspend fun collect(collector: FlowCollector<E>): Nothing {
             combine(this@stateCombine, flowB, flowC, flowD) { a, b, c, d -> combiner(a, b, c, d) }.collect(collector)
-            throw IllegalStateException("unreachable")
+            throw IllegalStateException("unreachable @stateCombine4#collect")
         }
         override val replayCache: List<E>
             get() = listOf(value)
@@ -165,13 +169,20 @@ object StateFlowUtil {
             lastValue
         }
         override suspend fun collect(collector: FlowCollector<R>): Nothing {
+            val flows = this@stateCombine.toList()
+            if (flows.isEmpty()) {
+                // if an empty list of StateFlows is combined, the combiner is only called once with an empty list,
+                // and then never emit again (as the inputs can never change).
+                collector.emit(combiner(emptyList()))
+                suspendCancellableCoroutine<Nothing> { } // suspend forever (until canceled)
+            }
             // combine wants reified T to construct a typed array.
             // we just trust, that Array<Any?> will do.
             @Suppress("UNCHECKED_CAST")
-            combine<Any?, R>(this@stateCombine) { items ->
+            combine<Any?, R>(flows) { items ->
                 combiner(items.toList() as List<T>)
             }.collect(collector)
-            throw IllegalStateException("unreachable")
+            throw IllegalStateException("unreachable @stateCombineN#collect")
         }
         override val replayCache: List<R>
             get() = listOf(value)
