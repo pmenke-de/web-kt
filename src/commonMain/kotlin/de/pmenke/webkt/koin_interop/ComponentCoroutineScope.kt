@@ -35,5 +35,6 @@ class ComponentCoroutineScope internal constructor(scope: Scope, componentRef: W
 private fun exceptionHandler(componentRef: WeakReference<Component>) = CoroutineExceptionHandler { _, exception ->
     LOG.error("Unhandled exception in coroutine-scope, owned by",
         componentRef.deref()?.currentElement,
-        exception.stackTraceToString())
+        exception.stackTraceToString(),
+        exception)
 }
