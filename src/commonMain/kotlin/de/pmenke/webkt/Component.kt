@@ -336,7 +336,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
         flow: Flow<T>,
         initialValue: T,
         classes: String = "",
-        renderBlock: RenderReceiver.(T) -> Unit) {
+        renderBlock: RenderReceiver.(T) -> Unit): Component {
         var currentValue: T = initialValue
         val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
             renderBlock(currentValue)
@@ -346,6 +346,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
             component.requestUpdate()
         }.launchIn(coroutineScope)
         component.renderTo(this)
+        return component
     }
 
     /**
@@ -364,7 +365,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
         tagName: String,
         flow: StateFlow<T>,
         classes: String = "",
-        renderBlock: RenderReceiver.(T) -> Unit) {
+        renderBlock: RenderReceiver.(T) -> Unit): Component {
         val weakInitialValue = flow.value?.let { WeakReference(it) }
         val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
             renderBlock(flow.value)
@@ -376,6 +377,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
             .onEach { component.requestUpdate() }
             .launchIn(coroutineScope)
         component.renderTo(this)
+        return component
     }
 }
 
