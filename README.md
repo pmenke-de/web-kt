@@ -117,6 +117,11 @@ callbacks.subscribe(Component.LifecycleCallbacks.Dispose) {
 }
 ```
 
+`Callbacks.notify(key)` propagates the first subscriber failure. Code that must continue notifying the
+remaining subscribers can opt into explicit error handling with
+`Callbacks.notifyCatching(key, onError = { ... })`. The distinct method name prevents a trailing lambda
+on a parameterless notification from being mistaken for a subscription.
+
 `AfterRender` runs after the element has been created or updated. During the first call, the caller may
 not yet have inserted the returned element into the document.
 

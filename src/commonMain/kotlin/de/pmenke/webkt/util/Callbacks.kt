@@ -30,29 +30,59 @@ class Callbacks {
 
     /**
      * Notifies all callbacks registered under the given [key] with the provided [payload].
-     * If an [errorHandler] is provided, it will be called for each exception thrown by a callback.
-     * If no [errorHandler] is provided, exceptions will be propagated.
+     *
+     * The first exception thrown by a callback is propagated to the caller. Use [notifyCatching] when
+     * notification should continue after a callback fails.
      */
-    fun <T> notify(key: CallbackKey<T>, payload: T, errorHandler: ((Throwable) -> Unit)? = null) {
+    fun <T> notify(key: CallbackKey<T>, payload: T) {
         // Snapshotting makes notification deterministic and safe when callbacks subscribe,
         // unsubscribe, clear the key, or recursively notify from inside a callback.
+        callbacks[key]?.values?.toList()?.forEach {
+            @Suppress("UNCHECKED_CAST")
+            (it as (T) -> Unit)(payload)
+        }
+    }
+
+    /**
+     * Compatibility adapter for payload notifications that previously supplied an optional error handler.
+     * Prefer [notify] when failures should propagate or [notifyCatching] for explicit error handling.
+     */
+    @Deprecated(
+        message = "Use notify(key, payload) or notifyCatching(key, payload, onError)",
+        replaceWith = ReplaceWith(
+            "if (errorHandler == null) notify(key, payload) else notifyCatching(key, payload, errorHandler)",
+        ),
+    )
+    fun <T> notify(key: CallbackKey<T>, payload: T, errorHandler: ((Throwable) -> Unit)?) {
+        if (errorHandler == null) notify(key, payload) else notifyCatching(key, payload, errorHandler)
+    }
+
+    /** Notifies all callbacks registered under the given parameterless [key]. */
+    fun notify(key: CallbackKey<Unit>) = notify(key, Unit)
+
+    /**
+     * Notifies all callbacks registered under the given [key] with the provided [payload], invoking
+     * [onError] for every callback exception and continuing with the remaining callbacks.
+     *
+     * Exceptions thrown by [onError] are propagated and stop notification.
+     */
+    fun <T> notifyCatching(key: CallbackKey<T>, payload: T, onError: (Throwable) -> Unit) {
+        // Take the same snapshot as notify so mutation and recursive notification have identical semantics.
         callbacks[key]?.values?.toList()?.forEach {
             try {
                 @Suppress("UNCHECKED_CAST")
                 (it as (T) -> Unit)(payload)
             } catch (t: Throwable) {
-                errorHandler?.invoke(t) ?: throw t
+                onError(t)
             }
         }
     }
 
     /**
-     * Notifies all callbacks registered under the given [key].
-     * If an [errorHandler] is provided, it will be called for each exception thrown by a callback.
-     * If no [errorHandler] is provided, exceptions will be propagated.
+     * Notifies all callbacks registered under the given parameterless [key], invoking [onError] for
+     * every callback exception and continuing with the remaining callbacks.
      */
-    // shorthand for parameterless callbacks
-    fun notify(key: CallbackKey<Unit>, errorHandler: ((Throwable) -> Unit)? = null) = notify(key, Unit, errorHandler)
+    fun notifyCatching(key: CallbackKey<Unit>, onError: (Throwable) -> Unit) = notifyCatching(key, Unit, onError)
 
     /**
      * Removes all callbacks registered under the given [key].

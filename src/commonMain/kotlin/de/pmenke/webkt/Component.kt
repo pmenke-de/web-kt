@@ -263,7 +263,7 @@ abstract class Component(
         if (disposed) return
         disposed = true
         LOG.debug { "[$id] dispose" }
-        callbacks.notify(LifecycleCallbacks.Dispose) { ex ->
+        callbacks.notifyCatching(LifecycleCallbacks.Dispose) { ex ->
             LOG.error { "[$id] uncaught exception during dispose callback: ${ex.stackTraceToString()}" }
         }
         currentRenderScope?.close()
