@@ -1,6 +1,7 @@
-@file:OptIn(ExperimentalWasmDsl::class)
+@file:OptIn(ExperimentalWasmDsl::class, ExperimentalAbiValidation::class)
 
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
 import org.gradle.api.publish.maven.MavenPublication
 
@@ -32,6 +33,10 @@ if (publishing.exists()) {
 }
 
 kotlin {
+    abiValidation {
+        enabled.set(true)
+    }
+
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
         optIn.add("kotlin.js.ExperimentalWasmJsInterop")
@@ -71,6 +76,10 @@ kotlin {
             implementation(kotlin("test"))
         }
     }
+}
+
+tasks.named("check") {
+    dependsOn("checkLegacyAbi")
 }
 
 publishing {

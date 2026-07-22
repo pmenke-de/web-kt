@@ -1,0 +1,608 @@
+// Klib ABI Dump
+// Targets: [wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <de.pmenke:web-kt>
+open annotation class de.pmenke.webkt/ComponentDSL : kotlin/Annotation { // de.pmenke.webkt/ComponentDSL|null[0]
+    constructor <init>() // de.pmenke.webkt/ComponentDSL.<init>|<init>(){}[0]
+}
+
+final enum class de.pmenke.webkt.log/LogLevel : kotlin/Enum<de.pmenke.webkt.log/LogLevel> { // de.pmenke.webkt.log/LogLevel|null[0]
+    enum entry DEBUG // de.pmenke.webkt.log/LogLevel.DEBUG|null[0]
+    enum entry ERROR // de.pmenke.webkt.log/LogLevel.ERROR|null[0]
+    enum entry INFO // de.pmenke.webkt.log/LogLevel.INFO|null[0]
+    enum entry WARN // de.pmenke.webkt.log/LogLevel.WARN|null[0]
+
+    final val entries // de.pmenke.webkt.log/LogLevel.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<de.pmenke.webkt.log/LogLevel> // de.pmenke.webkt.log/LogLevel.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): de.pmenke.webkt.log/LogLevel // de.pmenke.webkt.log/LogLevel.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<de.pmenke.webkt.log/LogLevel> // de.pmenke.webkt.log/LogLevel.values|values#static(){}[0]
+}
+
+final enum class de.pmenke.webkt.log/LoggingAspect : kotlin/Enum<de.pmenke.webkt.log/LoggingAspect> { // de.pmenke.webkt.log/LoggingAspect|null[0]
+    enum entry HTTP_REQUEST // de.pmenke.webkt.log/LoggingAspect.HTTP_REQUEST|null[0]
+    enum entry LIFECYCLE // de.pmenke.webkt.log/LoggingAspect.LIFECYCLE|null[0]
+    enum entry LOGIC // de.pmenke.webkt.log/LoggingAspect.LOGIC|null[0]
+    enum entry RENDERING // de.pmenke.webkt.log/LoggingAspect.RENDERING|null[0]
+
+    final val entries // de.pmenke.webkt.log/LoggingAspect.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<de.pmenke.webkt.log/LoggingAspect> // de.pmenke.webkt.log/LoggingAspect.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): de.pmenke.webkt.log/LoggingAspect // de.pmenke.webkt.log/LoggingAspect.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<de.pmenke.webkt.log/LoggingAspect> // de.pmenke.webkt.log/LoggingAspect.values|values#static(){}[0]
+}
+
+final enum class de.pmenke.webkt.util/SortDirection : kotlin/Enum<de.pmenke.webkt.util/SortDirection> { // de.pmenke.webkt.util/SortDirection|null[0]
+    enum entry ASC // de.pmenke.webkt.util/SortDirection.ASC|null[0]
+    enum entry DESC // de.pmenke.webkt.util/SortDirection.DESC|null[0]
+    enum entry NONE // de.pmenke.webkt.util/SortDirection.NONE|null[0]
+
+    final val ariaLabel // de.pmenke.webkt.util/SortDirection.ariaLabel|{}ariaLabel[0]
+        final fun <get-ariaLabel>(): kotlin/String // de.pmenke.webkt.util/SortDirection.ariaLabel.<get-ariaLabel>|<get-ariaLabel>(){}[0]
+    final val classSuffix // de.pmenke.webkt.util/SortDirection.classSuffix|{}classSuffix[0]
+        final fun <get-classSuffix>(): kotlin/String // de.pmenke.webkt.util/SortDirection.classSuffix.<get-classSuffix>|<get-classSuffix>(){}[0]
+    final val entries // de.pmenke.webkt.util/SortDirection.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<de.pmenke.webkt.util/SortDirection> // de.pmenke.webkt.util/SortDirection.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun cycle(): de.pmenke.webkt.util/SortDirection // de.pmenke.webkt.util/SortDirection.cycle|cycle(){}[0]
+    final fun valueOf(kotlin/String): de.pmenke.webkt.util/SortDirection // de.pmenke.webkt.util/SortDirection.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<de.pmenke.webkt.util/SortDirection> // de.pmenke.webkt.util/SortDirection.values|values#static(){}[0]
+}
+
+abstract interface <#A: kotlin/Any?, #B: kotlin/Any?> de.pmenke.webkt.util/CachingFlowMap { // de.pmenke.webkt.util/CachingFlowMap|null[0]
+    abstract fun get(#A): de.pmenke.webkt.util/CachingFlow<#B> // de.pmenke.webkt.util/CachingFlowMap.get|get(1:0){}[0]
+}
+
+abstract interface <#A: kotlin/Any?> de.pmenke.webkt.util/FilterElement { // de.pmenke.webkt.util/FilterElement|null[0]
+    abstract val active // de.pmenke.webkt.util/FilterElement.active|{}active[0]
+        abstract fun <get-active>(): kotlin/Boolean // de.pmenke.webkt.util/FilterElement.active.<get-active>|<get-active>(){}[0]
+    abstract val filter // de.pmenke.webkt.util/FilterElement.filter|{}filter[0]
+        abstract fun <get-filter>(): de.pmenke.webkt.util/ObservableValue<kotlin/Function1<#A, kotlin/Boolean>> // de.pmenke.webkt.util/FilterElement.filter.<get-filter>|<get-filter>(){}[0]
+}
+
+abstract interface <#A: out kotlin/Any?> de.pmenke.webkt.util/ObservableValue { // de.pmenke.webkt.util/ObservableValue|null[0]
+    abstract val updates // de.pmenke.webkt.util/ObservableValue.updates|{}updates[0]
+        abstract fun <get-updates>(): kotlinx.coroutines.flow/Flow<#A> // de.pmenke.webkt.util/ObservableValue.updates.<get-updates>|<get-updates>(){}[0]
+    abstract val value // de.pmenke.webkt.util/ObservableValue.value|{}value[0]
+        abstract fun <get-value>(): #A // de.pmenke.webkt.util/ObservableValue.value.<get-value>|<get-value>(){}[0]
+}
+
+abstract interface de.pmenke.webkt.util/AttributeStore { // de.pmenke.webkt.util/AttributeStore|null[0]
+    abstract fun <#A1: kotlin/Any?> get(de.pmenke.webkt.util/AttributeKey<#A1>): #A1? // de.pmenke.webkt.util/AttributeStore.get|get(de.pmenke.webkt.util.AttributeKey<0:0>){0§<kotlin.Any?>}[0]
+    abstract fun <#A1: kotlin/Any?> set(de.pmenke.webkt.util/AttributeKey<#A1>, #A1?) // de.pmenke.webkt.util/AttributeStore.set|set(de.pmenke.webkt.util.AttributeKey<0:0>;0:0?){0§<kotlin.Any?>}[0]
+    open fun <#A1: kotlin/Any?> require(de.pmenke.webkt.util/AttributeKey<#A1>): #A1 // de.pmenke.webkt.util/AttributeStore.require|require(de.pmenke.webkt.util.AttributeKey<0:0>){0§<kotlin.Any?>}[0]
+}
+
+abstract interface de.pmenke.webkt.util/SortElement { // de.pmenke.webkt.util/SortElement|null[0]
+    abstract val direction // de.pmenke.webkt.util/SortElement.direction|{}direction[0]
+        abstract fun <get-direction>(): de.pmenke.webkt.util/ObservableValue<de.pmenke.webkt.util/SortDirection> // de.pmenke.webkt.util/SortElement.direction.<get-direction>|<get-direction>(){}[0]
+
+    abstract fun cycle(kotlin/Boolean = ...) // de.pmenke.webkt.util/SortElement.cycle|cycle(kotlin.Boolean){}[0]
+    abstract fun set(de.pmenke.webkt.util/SortDirection, kotlin/Boolean = ...) // de.pmenke.webkt.util/SortElement.set|set(de.pmenke.webkt.util.SortDirection;kotlin.Boolean){}[0]
+}
+
+abstract interface de.pmenke.webkt/ComponentEnvironment { // de.pmenke.webkt/ComponentEnvironment|null[0]
+    open fun attachComponent(de.pmenke.webkt/Component, de.pmenke.webkt/ResourceLifetime) // de.pmenke.webkt/ComponentEnvironment.attachComponent|attachComponent(de.pmenke.webkt.Component;de.pmenke.webkt.ResourceLifetime){}[0]
+    open fun createRenderEnvironment(de.pmenke.webkt/Component, de.pmenke.webkt/ResourceLifetime): de.pmenke.webkt/RenderEnvironment // de.pmenke.webkt/ComponentEnvironment.createRenderEnvironment|createRenderEnvironment(de.pmenke.webkt.Component;de.pmenke.webkt.ResourceLifetime){}[0]
+
+    final object Companion { // de.pmenke.webkt/ComponentEnvironment.Companion|null[0]
+        final val Empty // de.pmenke.webkt/ComponentEnvironment.Companion.Empty|{}Empty[0]
+            final fun <get-Empty>(): de.pmenke.webkt/ComponentEnvironment // de.pmenke.webkt/ComponentEnvironment.Companion.Empty.<get-Empty>|<get-Empty>(){}[0]
+    }
+}
+
+abstract interface de.pmenke.webkt/RenderEnvironment : kotlin/AutoCloseable // de.pmenke.webkt/RenderEnvironment|null[0]
+
+abstract interface de.pmenke.webkt/RenderReceiver : kotlinx.html/TagConsumer<org.w3c.dom/Element> { // de.pmenke.webkt/RenderReceiver|null[0]
+    abstract val component // de.pmenke.webkt/RenderReceiver.component|{}component[0]
+        abstract fun <get-component>(): de.pmenke.webkt/Component // de.pmenke.webkt/RenderReceiver.component.<get-component>|<get-component>(){}[0]
+    abstract val componentContext // de.pmenke.webkt/RenderReceiver.componentContext|{}componentContext[0]
+        abstract fun <get-componentContext>(): de.pmenke.webkt.util/HierarchicalAttributeStore // de.pmenke.webkt/RenderReceiver.componentContext.<get-componentContext>|<get-componentContext>(){}[0]
+    abstract val coroutineScope // de.pmenke.webkt/RenderReceiver.coroutineScope|{}coroutineScope[0]
+        abstract fun <get-coroutineScope>(): kotlinx.coroutines/CoroutineScope // de.pmenke.webkt/RenderReceiver.coroutineScope.<get-coroutineScope>|<get-coroutineScope>(){}[0]
+    abstract val environment // de.pmenke.webkt/RenderReceiver.environment|{}environment[0]
+        abstract fun <get-environment>(): de.pmenke.webkt/RenderEnvironment // de.pmenke.webkt/RenderReceiver.environment.<get-environment>|<get-environment>(){}[0]
+
+    open fun <#A1: kotlin/Any?> inlineFlowComponent(kotlin/String, de.pmenke.webkt.util/ObservableValue<#A1>, kotlin/String = ..., kotlin/Function2<de.pmenke.webkt/RenderReceiver, #A1, kotlin/Unit>): de.pmenke.webkt/Component // de.pmenke.webkt/RenderReceiver.inlineFlowComponent|inlineFlowComponent(kotlin.String;de.pmenke.webkt.util.ObservableValue<0:0>;kotlin.String;kotlin.Function2<de.pmenke.webkt.RenderReceiver,0:0,kotlin.Unit>){0§<kotlin.Any?>}[0]
+    open fun <#A1: kotlin/Any?> inlineFlowComponent(kotlin/String, kotlinx.coroutines.flow/Flow<#A1>, #A1, kotlin/String = ..., kotlin/Function2<de.pmenke.webkt/RenderReceiver, #A1, kotlin/Unit>): de.pmenke.webkt/Component // de.pmenke.webkt/RenderReceiver.inlineFlowComponent|inlineFlowComponent(kotlin.String;kotlinx.coroutines.flow.Flow<0:0>;0:0;kotlin.String;kotlin.Function2<de.pmenke.webkt.RenderReceiver,0:0,kotlin.Unit>){0§<kotlin.Any?>}[0]
+    open fun <#A1: kotlin/Any?> inlineFlowComponent(kotlin/String, kotlinx.coroutines.flow/StateFlow<#A1>, kotlin/String = ..., kotlin/Function2<de.pmenke.webkt/RenderReceiver, #A1, kotlin/Unit>): de.pmenke.webkt/Component // de.pmenke.webkt/RenderReceiver.inlineFlowComponent|inlineFlowComponent(kotlin.String;kotlinx.coroutines.flow.StateFlow<0:0>;kotlin.String;kotlin.Function2<de.pmenke.webkt.RenderReceiver,0:0,kotlin.Unit>){0§<kotlin.Any?>}[0]
+}
+
+abstract interface de.pmenke.webkt/ResourceLifetime : kotlin/AutoCloseable, kotlinx.coroutines/CoroutineScope { // de.pmenke.webkt/ResourceLifetime|null[0]
+    abstract val isClosed // de.pmenke.webkt/ResourceLifetime.isClosed|{}isClosed[0]
+        abstract fun <get-isClosed>(): kotlin/Boolean // de.pmenke.webkt/ResourceLifetime.isClosed.<get-isClosed>|<get-isClosed>(){}[0]
+
+    abstract fun onClose(kotlin/Function0<kotlin/Unit>) // de.pmenke.webkt/ResourceLifetime.onClose|onClose(kotlin.Function0<kotlin.Unit>){}[0]
+}
+
+sealed interface <#A: kotlin/Any?> de.pmenke.webkt.util/CachingFlow { // de.pmenke.webkt.util/CachingFlow|null[0]
+    abstract val subscriptionCount // de.pmenke.webkt.util/CachingFlow.subscriptionCount|{}subscriptionCount[0]
+        abstract fun <get-subscriptionCount>(): kotlinx.coroutines.flow/StateFlow<kotlin/Int> // de.pmenke.webkt.util/CachingFlow.subscriptionCount.<get-subscriptionCount>|<get-subscriptionCount>(){}[0]
+    abstract val values // de.pmenke.webkt.util/CachingFlow.values|{}values[0]
+        abstract fun <get-values>(): kotlinx.coroutines.flow/SharedFlow<#A> // de.pmenke.webkt.util/CachingFlow.values.<get-values>|<get-values>(){}[0]
+
+    abstract fun clear() // de.pmenke.webkt.util/CachingFlow.clear|clear(){}[0]
+    abstract suspend fun refresh() // de.pmenke.webkt.util/CachingFlow.refresh|refresh(){}[0]
+}
+
+sealed interface <#A: kotlin/Any?> de.pmenke.webkt.util/MutableCachingFlow : de.pmenke.webkt.util/CachingFlow<#A> { // de.pmenke.webkt.util/MutableCachingFlow|null[0]
+    abstract fun asCachingFlow(): de.pmenke.webkt.util/CachingFlow<#A> // de.pmenke.webkt.util/MutableCachingFlow.asCachingFlow|asCachingFlow(){}[0]
+    abstract suspend fun setValue(#A) // de.pmenke.webkt.util/MutableCachingFlow.setValue|setValue(1:0){}[0]
+}
+
+abstract class de.pmenke.webkt/Component : kotlin/AutoCloseable { // de.pmenke.webkt/Component|null[0]
+    constructor <init>(de.pmenke.webkt/Component, kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/String> = ...) // de.pmenke.webkt/Component.<init>|<init>(de.pmenke.webkt.Component;kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.String>){}[0]
+    constructor <init>(de.pmenke.webkt/ComponentEnvironment, kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/String> = ...) // de.pmenke.webkt/Component.<init>|<init>(de.pmenke.webkt.ComponentEnvironment;kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.String>){}[0]
+
+    final val callbacks // de.pmenke.webkt/Component.callbacks|{}callbacks[0]
+        final fun <get-callbacks>(): de.pmenke.webkt.util/Callbacks // de.pmenke.webkt/Component.callbacks.<get-callbacks>|<get-callbacks>(){}[0]
+    final val componentContext // de.pmenke.webkt/Component.componentContext|{}componentContext[0]
+        final fun <get-componentContext>(): de.pmenke.webkt.util/HierarchicalAttributeStore // de.pmenke.webkt/Component.componentContext.<get-componentContext>|<get-componentContext>(){}[0]
+    final val coroutineScope // de.pmenke.webkt/Component.coroutineScope|{}coroutineScope[0]
+        final fun <get-coroutineScope>(): kotlinx.coroutines/CoroutineScope // de.pmenke.webkt/Component.coroutineScope.<get-coroutineScope>|<get-coroutineScope>(){}[0]
+    final val currentElement // de.pmenke.webkt/Component.currentElement|{}currentElement[0]
+        final fun <get-currentElement>(): org.w3c.dom/HTMLElement? // de.pmenke.webkt/Component.currentElement.<get-currentElement>|<get-currentElement>(){}[0]
+    final val environment // de.pmenke.webkt/Component.environment|{}environment[0]
+        final fun <get-environment>(): de.pmenke.webkt/ComponentEnvironment // de.pmenke.webkt/Component.environment.<get-environment>|<get-environment>(){}[0]
+    final val id // de.pmenke.webkt/Component.id|{}id[0]
+        final fun <get-id>(): kotlin/String // de.pmenke.webkt/Component.id.<get-id>|<get-id>(){}[0]
+    final val parent // de.pmenke.webkt/Component.parent|{}parent[0]
+        final fun <get-parent>(): de.pmenke.webkt/Component? // de.pmenke.webkt/Component.parent.<get-parent>|<get-parent>(){}[0]
+
+    abstract fun (de.pmenke.webkt/RenderReceiver).renderContents() // de.pmenke.webkt/Component.renderContents|renderContents@de.pmenke.webkt.RenderReceiver(){}[0]
+    final fun (kotlinx.html/TagConsumer<org.w3c.dom/Element>).render(de.pmenke.webkt/Component) // de.pmenke.webkt/Component.render|render@kotlinx.html.TagConsumer<org.w3c.dom.Element>(de.pmenke.webkt.Component){}[0]
+    final fun close() // de.pmenke.webkt/Component.close|close(){}[0]
+    final fun renderTo(kotlinx.html/TagConsumer<org.w3c.dom/Element>): org.w3c.dom/HTMLElement // de.pmenke.webkt/Component.renderTo|renderTo(kotlinx.html.TagConsumer<org.w3c.dom.Element>){}[0]
+    final fun requestUpdate() // de.pmenke.webkt/Component.requestUpdate|requestUpdate(){}[0]
+    open fun (de.pmenke.webkt/RenderReceiver).renderFailure(kotlin/Throwable): kotlin/Boolean // de.pmenke.webkt/Component.renderFailure|renderFailure@de.pmenke.webkt.RenderReceiver(kotlin.Throwable){}[0]
+    open fun updateContents() // de.pmenke.webkt/Component.updateContents|updateContents(){}[0]
+
+    final object Companion { // de.pmenke.webkt/Component.Companion|null[0]
+        final object LifecycleCallbacks { // de.pmenke.webkt/Component.Companion.LifecycleCallbacks|null[0]
+            final val AfterRender // de.pmenke.webkt/Component.Companion.LifecycleCallbacks.AfterRender|{}AfterRender[0]
+                final fun <get-AfterRender>(): de.pmenke.webkt.util/CallbackKey<kotlin/Unit> // de.pmenke.webkt/Component.Companion.LifecycleCallbacks.AfterRender.<get-AfterRender>|<get-AfterRender>(){}[0]
+            final val Dispose // de.pmenke.webkt/Component.Companion.LifecycleCallbacks.Dispose|{}Dispose[0]
+                final fun <get-Dispose>(): de.pmenke.webkt.util/CallbackKey<kotlin/Unit> // de.pmenke.webkt/Component.Companion.LifecycleCallbacks.Dispose.<get-Dispose>|<get-Dispose>(){}[0]
+        }
+    }
+}
+
+final class <#A: kotlin/Any> de.pmenke.webkt.js_interop/WeakReference { // de.pmenke.webkt.js_interop/WeakReference|null[0]
+    constructor <init>(#A) // de.pmenke.webkt.js_interop/WeakReference.<init>|<init>(1:0){}[0]
+
+    final fun deref(): #A? // de.pmenke.webkt.js_interop/WeakReference.deref|deref(){}[0]
+}
+
+final class <#A: kotlin/Any> de.pmenke.webkt/Route { // de.pmenke.webkt/Route|null[0]
+    constructor <init>(kotlin/String) // de.pmenke.webkt/Route.<init>|<init>(kotlin.String){}[0]
+
+    final fun (kotlin/String).invoke(kotlin/Function1<de.pmenke.webkt/Route<#A>, kotlin/Unit>): de.pmenke.webkt/Route<#A> // de.pmenke.webkt/Route.invoke|invoke@kotlin.String(kotlin.Function1<de.pmenke.webkt.Route<1:0>,kotlin.Unit>){}[0]
+    final fun enter(kotlin/String): #A? // de.pmenke.webkt/Route.enter|enter(kotlin.String){}[0]
+    final fun onSelect(kotlin/Function2<kotlin.collections/Map<kotlin/String, kotlin/String>, kotlin.collections/Set<kotlin/String>, #A>) // de.pmenke.webkt/Route.onSelect|onSelect(kotlin.Function2<kotlin.collections.Map<kotlin.String,kotlin.String>,kotlin.collections.Set<kotlin.String>,1:0>){}[0]
+    final fun route(kotlin/String, kotlin/Function1<de.pmenke.webkt/Route<#A>, kotlin/Unit>): de.pmenke.webkt/Route<#A> // de.pmenke.webkt/Route.route|route(kotlin.String;kotlin.Function1<de.pmenke.webkt.Route<1:0>,kotlin.Unit>){}[0]
+    final fun tag(kotlin/String) // de.pmenke.webkt/Route.tag|tag(kotlin.String){}[0]
+}
+
+final class <#A: kotlin/Any?, #B: kotlin/Any?> de.pmenke.webkt.util/MutableCachingFlowMap : de.pmenke.webkt.util/CachingFlowMap<#A, #B>, kotlin/AutoCloseable { // de.pmenke.webkt.util/MutableCachingFlowMap|null[0]
+    constructor <init>(kotlin.coroutines/SuspendFunction1<#A, #B>, kotlin.time/Duration = ..., kotlin.time/Duration = ...) // de.pmenke.webkt.util/MutableCachingFlowMap.<init>|<init>(kotlin.coroutines.SuspendFunction1<1:0,1:1>;kotlin.time.Duration;kotlin.time.Duration){}[0]
+    constructor <init>(kotlinx.coroutines/CoroutineScope, kotlin.coroutines/SuspendFunction1<#A, #B>, kotlin.time/Duration = ..., kotlin.time/Duration = ...) // de.pmenke.webkt.util/MutableCachingFlowMap.<init>|<init>(kotlinx.coroutines.CoroutineScope;kotlin.coroutines.SuspendFunction1<1:0,1:1>;kotlin.time.Duration;kotlin.time.Duration){}[0]
+
+    final fun asCachingFlowMap(): de.pmenke.webkt.util/CachingFlowMap<#A, #B> // de.pmenke.webkt.util/MutableCachingFlowMap.asCachingFlowMap|asCachingFlowMap(){}[0]
+    final fun clearAll() // de.pmenke.webkt.util/MutableCachingFlowMap.clearAll|clearAll(){}[0]
+    final fun close() // de.pmenke.webkt.util/MutableCachingFlowMap.close|close(){}[0]
+    final fun get(#A): de.pmenke.webkt.util/MutableCachingFlow<#B> // de.pmenke.webkt.util/MutableCachingFlowMap.get|get(1:0){}[0]
+
+    final object Companion // de.pmenke.webkt.util/MutableCachingFlowMap.Companion|null[0]
+}
+
+final class <#A: kotlin/Any?> de.pmenke.webkt.util/AttributeKey { // de.pmenke.webkt.util/AttributeKey|null[0]
+    constructor <init>(kotlin/String) // de.pmenke.webkt.util/AttributeKey.<init>|<init>(kotlin.String){}[0]
+
+    final val name // de.pmenke.webkt.util/AttributeKey.name|{}name[0]
+        final fun <get-name>(): kotlin/String // de.pmenke.webkt.util/AttributeKey.name.<get-name>|<get-name>(){}[0]
+}
+
+final class <#A: kotlin/Any?> de.pmenke.webkt.util/CallbackKey { // de.pmenke.webkt.util/CallbackKey|null[0]
+    constructor <init>(kotlin/String) // de.pmenke.webkt.util/CallbackKey.<init>|<init>(kotlin.String){}[0]
+
+    final val name // de.pmenke.webkt.util/CallbackKey.name|{}name[0]
+        final fun <get-name>(): kotlin/String // de.pmenke.webkt.util/CallbackKey.name.<get-name>|<get-name>(){}[0]
+}
+
+final class <#A: kotlin/Any?> de.pmenke.webkt.util/ControlValue { // de.pmenke.webkt.util/ControlValue|null[0]
+    constructor <init>(#A) // de.pmenke.webkt.util/ControlValue.<init>|<init>(1:0){}[0]
+    constructor <init>(org.w3c.dom.events/EventTarget, kotlin.reflect/KMutableProperty0<#A>, kotlin/String = ...) // de.pmenke.webkt.util/ControlValue.<init>|<init>(org.w3c.dom.events.EventTarget;kotlin.reflect.KMutableProperty0<1:0>;kotlin.String){}[0]
+
+    final val dirtyState // de.pmenke.webkt.util/ControlValue.dirtyState|{}dirtyState[0]
+        final fun <get-dirtyState>(): kotlinx.coroutines.flow/StateFlow<kotlin/Boolean> // de.pmenke.webkt.util/ControlValue.dirtyState.<get-dirtyState>|<get-dirtyState>(){}[0]
+    final val touchedState // de.pmenke.webkt.util/ControlValue.touchedState|{}touchedState[0]
+        final fun <get-touchedState>(): kotlinx.coroutines.flow/StateFlow<kotlin/Boolean> // de.pmenke.webkt.util/ControlValue.touchedState.<get-touchedState>|<get-touchedState>(){}[0]
+    final val valueState // de.pmenke.webkt.util/ControlValue.valueState|{}valueState[0]
+        final fun <get-valueState>(): kotlinx.coroutines.flow/StateFlow<#A> // de.pmenke.webkt.util/ControlValue.valueState.<get-valueState>|<get-valueState>(){}[0]
+
+    final var dirty // de.pmenke.webkt.util/ControlValue.dirty|{}dirty[0]
+        final fun <get-dirty>(): kotlin/Boolean // de.pmenke.webkt.util/ControlValue.dirty.<get-dirty>|<get-dirty>(){}[0]
+        final fun <set-dirty>(kotlin/Boolean) // de.pmenke.webkt.util/ControlValue.dirty.<set-dirty>|<set-dirty>(kotlin.Boolean){}[0]
+    final var touched // de.pmenke.webkt.util/ControlValue.touched|{}touched[0]
+        final fun <get-touched>(): kotlin/Boolean // de.pmenke.webkt.util/ControlValue.touched.<get-touched>|<get-touched>(){}[0]
+        final fun <set-touched>(kotlin/Boolean) // de.pmenke.webkt.util/ControlValue.touched.<set-touched>|<set-touched>(kotlin.Boolean){}[0]
+    final var value // de.pmenke.webkt.util/ControlValue.value|{}value[0]
+        final fun <get-value>(): #A // de.pmenke.webkt.util/ControlValue.value.<get-value>|<get-value>(){}[0]
+        final fun <set-value>(#A) // de.pmenke.webkt.util/ControlValue.value.<set-value>|<set-value>(1:0){}[0]
+
+    final fun bind(org.w3c.dom.events/EventTarget, kotlin.reflect/KMutableProperty0<#A>, kotlin/String = ...) // de.pmenke.webkt.util/ControlValue.bind|bind(org.w3c.dom.events.EventTarget;kotlin.reflect.KMutableProperty0<1:0>;kotlin.String){}[0]
+    final fun getValue(kotlin/Any?, kotlin.reflect/KProperty<*>): #A // de.pmenke.webkt.util/ControlValue.getValue|getValue(kotlin.Any?;kotlin.reflect.KProperty<*>){}[0]
+    final fun setValue(kotlin/Any?, kotlin.reflect/KProperty<*>, #A) // de.pmenke.webkt.util/ControlValue.setValue|setValue(kotlin.Any?;kotlin.reflect.KProperty<*>;1:0){}[0]
+    final fun unbind() // de.pmenke.webkt.util/ControlValue.unbind|unbind(){}[0]
+}
+
+final class <#A: kotlin/Any?> de.pmenke.webkt.util/FilterControls { // de.pmenke.webkt.util/FilterControls|null[0]
+    constructor <init>() // de.pmenke.webkt.util/FilterControls.<init>|<init>(){}[0]
+
+    final val filter // de.pmenke.webkt.util/FilterControls.filter|{}filter[0]
+        final fun <get-filter>(): de.pmenke.webkt.util/ObservableValue<kotlin/Function1<#A, kotlin/Boolean>> // de.pmenke.webkt.util/FilterControls.filter.<get-filter>|<get-filter>(){}[0]
+
+    final fun addFilter(de.pmenke.webkt.util/FilterElement<#A>) // de.pmenke.webkt.util/FilterControls.addFilter|addFilter(de.pmenke.webkt.util.FilterElement<1:0>){}[0]
+    final fun addOptionFilter(kotlin.collections/List<de.pmenke.webkt.util/FilterOption<#A>>): de.pmenke.webkt.util/OptionFilterElement<#A> // de.pmenke.webkt.util/FilterControls.addOptionFilter|addOptionFilter(kotlin.collections.List<de.pmenke.webkt.util.FilterOption<1:0>>){}[0]
+    final fun addOptionFilter(kotlin/Array<out de.pmenke.webkt.util/FilterOption<#A>>...): de.pmenke.webkt.util/OptionFilterElement<#A> // de.pmenke.webkt.util/FilterControls.addOptionFilter|addOptionFilter(kotlin.Array<out|de.pmenke.webkt.util.FilterOption<1:0>>...){}[0]
+}
+
+final class <#A: kotlin/Any?> de.pmenke.webkt.util/FilterOption { // de.pmenke.webkt.util/FilterOption|null[0]
+    constructor <init>(kotlin/String, kotlin/Function1<#A, kotlin/Boolean>) // de.pmenke.webkt.util/FilterOption.<init>|<init>(kotlin.String;kotlin.Function1<1:0,kotlin.Boolean>){}[0]
+
+    final val label // de.pmenke.webkt.util/FilterOption.label|{}label[0]
+        final fun <get-label>(): kotlin/String // de.pmenke.webkt.util/FilterOption.label.<get-label>|<get-label>(){}[0]
+    final val matcher // de.pmenke.webkt.util/FilterOption.matcher|{}matcher[0]
+        final fun <get-matcher>(): kotlin/Function1<#A, kotlin/Boolean> // de.pmenke.webkt.util/FilterOption.matcher.<get-matcher>|<get-matcher>(){}[0]
+    final val selected // de.pmenke.webkt.util/FilterOption.selected|{}selected[0]
+        final fun <get-selected>(): kotlinx.coroutines.flow/MutableStateFlow<kotlin/Boolean> // de.pmenke.webkt.util/FilterOption.selected.<get-selected>|<get-selected>(){}[0]
+}
+
+final class <#A: kotlin/Any?> de.pmenke.webkt.util/OptionFilterElement : de.pmenke.webkt.util/FilterElement<#A> { // de.pmenke.webkt.util/OptionFilterElement|null[0]
+    constructor <init>(kotlin.collections/List<de.pmenke.webkt.util/FilterOption<#A>>) // de.pmenke.webkt.util/OptionFilterElement.<init>|<init>(kotlin.collections.List<de.pmenke.webkt.util.FilterOption<1:0>>){}[0]
+
+    final val active // de.pmenke.webkt.util/OptionFilterElement.active|{}active[0]
+        final fun <get-active>(): kotlin/Boolean // de.pmenke.webkt.util/OptionFilterElement.active.<get-active>|<get-active>(){}[0]
+    final val filter // de.pmenke.webkt.util/OptionFilterElement.filter|{}filter[0]
+        final fun <get-filter>(): de.pmenke.webkt.util/ObservableValue<kotlin/Function1<#A, kotlin/Boolean>> // de.pmenke.webkt.util/OptionFilterElement.filter.<get-filter>|<get-filter>(){}[0]
+    final val options // de.pmenke.webkt.util/OptionFilterElement.options|{}options[0]
+        final fun <get-options>(): kotlin.collections/List<de.pmenke.webkt.util/FilterOption<#A>> // de.pmenke.webkt.util/OptionFilterElement.options.<get-options>|<get-options>(){}[0]
+}
+
+final class <#A: kotlin/Any?> de.pmenke.webkt.util/SortControls { // de.pmenke.webkt.util/SortControls|null[0]
+    constructor <init>() // de.pmenke.webkt.util/SortControls.<init>|<init>(){}[0]
+
+    final val comparator // de.pmenke.webkt.util/SortControls.comparator|{}comparator[0]
+        final fun <get-comparator>(): de.pmenke.webkt.util/ObservableValue<kotlin/Comparator<#A>> // de.pmenke.webkt.util/SortControls.comparator.<get-comparator>|<get-comparator>(){}[0]
+
+    final fun addElement(kotlin/Comparator<#A>): de.pmenke.webkt.util/SortElement // de.pmenke.webkt.util/SortControls.addElement|addElement(kotlin.Comparator<1:0>){}[0]
+}
+
+final class <#A: out kotlin/Any?, #B: out kotlin/Any?, #C: out kotlin/Any?, #D: out kotlin/Any?, #E: out kotlin/Any?> de.pmenke.webkt.util/Tuple5 { // de.pmenke.webkt.util/Tuple5|null[0]
+    constructor <init>(#A, #B, #C, #D, #E) // de.pmenke.webkt.util/Tuple5.<init>|<init>(1:0;1:1;1:2;1:3;1:4){}[0]
+
+    final val fifth // de.pmenke.webkt.util/Tuple5.fifth|{}fifth[0]
+        final fun <get-fifth>(): #E // de.pmenke.webkt.util/Tuple5.fifth.<get-fifth>|<get-fifth>(){}[0]
+    final val first // de.pmenke.webkt.util/Tuple5.first|{}first[0]
+        final fun <get-first>(): #A // de.pmenke.webkt.util/Tuple5.first.<get-first>|<get-first>(){}[0]
+    final val fourth // de.pmenke.webkt.util/Tuple5.fourth|{}fourth[0]
+        final fun <get-fourth>(): #D // de.pmenke.webkt.util/Tuple5.fourth.<get-fourth>|<get-fourth>(){}[0]
+    final val second // de.pmenke.webkt.util/Tuple5.second|{}second[0]
+        final fun <get-second>(): #B // de.pmenke.webkt.util/Tuple5.second.<get-second>|<get-second>(){}[0]
+    final val third // de.pmenke.webkt.util/Tuple5.third|{}third[0]
+        final fun <get-third>(): #C // de.pmenke.webkt.util/Tuple5.third.<get-third>|<get-third>(){}[0]
+
+    final fun component1(): #A // de.pmenke.webkt.util/Tuple5.component1|component1(){}[0]
+    final fun component2(): #B // de.pmenke.webkt.util/Tuple5.component2|component2(){}[0]
+    final fun component3(): #C // de.pmenke.webkt.util/Tuple5.component3|component3(){}[0]
+    final fun component4(): #D // de.pmenke.webkt.util/Tuple5.component4|component4(){}[0]
+    final fun component5(): #E // de.pmenke.webkt.util/Tuple5.component5|component5(){}[0]
+    final fun copy(#A = ..., #B = ..., #C = ..., #D = ..., #E = ...): de.pmenke.webkt.util/Tuple5<#A, #B, #C, #D, #E> // de.pmenke.webkt.util/Tuple5.copy|copy(1:0;1:1;1:2;1:3;1:4){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // de.pmenke.webkt.util/Tuple5.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // de.pmenke.webkt.util/Tuple5.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // de.pmenke.webkt.util/Tuple5.toString|toString(){}[0]
+}
+
+final class <#A: out kotlin/Any?, #B: out kotlin/Any?, #C: out kotlin/Any?, #D: out kotlin/Any?> de.pmenke.webkt.util/Tuple4 { // de.pmenke.webkt.util/Tuple4|null[0]
+    constructor <init>(#A, #B, #C, #D) // de.pmenke.webkt.util/Tuple4.<init>|<init>(1:0;1:1;1:2;1:3){}[0]
+
+    final val first // de.pmenke.webkt.util/Tuple4.first|{}first[0]
+        final fun <get-first>(): #A // de.pmenke.webkt.util/Tuple4.first.<get-first>|<get-first>(){}[0]
+    final val fourth // de.pmenke.webkt.util/Tuple4.fourth|{}fourth[0]
+        final fun <get-fourth>(): #D // de.pmenke.webkt.util/Tuple4.fourth.<get-fourth>|<get-fourth>(){}[0]
+    final val second // de.pmenke.webkt.util/Tuple4.second|{}second[0]
+        final fun <get-second>(): #B // de.pmenke.webkt.util/Tuple4.second.<get-second>|<get-second>(){}[0]
+    final val third // de.pmenke.webkt.util/Tuple4.third|{}third[0]
+        final fun <get-third>(): #C // de.pmenke.webkt.util/Tuple4.third.<get-third>|<get-third>(){}[0]
+
+    final fun component1(): #A // de.pmenke.webkt.util/Tuple4.component1|component1(){}[0]
+    final fun component2(): #B // de.pmenke.webkt.util/Tuple4.component2|component2(){}[0]
+    final fun component3(): #C // de.pmenke.webkt.util/Tuple4.component3|component3(){}[0]
+    final fun component4(): #D // de.pmenke.webkt.util/Tuple4.component4|component4(){}[0]
+    final fun copy(#A = ..., #B = ..., #C = ..., #D = ...): de.pmenke.webkt.util/Tuple4<#A, #B, #C, #D> // de.pmenke.webkt.util/Tuple4.copy|copy(1:0;1:1;1:2;1:3){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // de.pmenke.webkt.util/Tuple4.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // de.pmenke.webkt.util/Tuple4.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // de.pmenke.webkt.util/Tuple4.toString|toString(){}[0]
+}
+
+final class de.pmenke.webkt.koin_interop/KoinComponentEnvironment : de.pmenke.webkt/ComponentEnvironment { // de.pmenke.webkt.koin_interop/KoinComponentEnvironment|null[0]
+    constructor <init>(org.koin.core.scope/Scope) // de.pmenke.webkt.koin_interop/KoinComponentEnvironment.<init>|<init>(org.koin.core.scope.Scope){}[0]
+
+    final val scope // de.pmenke.webkt.koin_interop/KoinComponentEnvironment.scope|{}scope[0]
+        final fun <get-scope>(): org.koin.core.scope/Scope // de.pmenke.webkt.koin_interop/KoinComponentEnvironment.scope.<get-scope>|<get-scope>(){}[0]
+
+    final fun attachComponent(de.pmenke.webkt/Component, de.pmenke.webkt/ResourceLifetime) // de.pmenke.webkt.koin_interop/KoinComponentEnvironment.attachComponent|attachComponent(de.pmenke.webkt.Component;de.pmenke.webkt.ResourceLifetime){}[0]
+    final fun createRenderEnvironment(de.pmenke.webkt/Component, de.pmenke.webkt/ResourceLifetime): de.pmenke.webkt/RenderEnvironment // de.pmenke.webkt.koin_interop/KoinComponentEnvironment.createRenderEnvironment|createRenderEnvironment(de.pmenke.webkt.Component;de.pmenke.webkt.ResourceLifetime){}[0]
+}
+
+final class de.pmenke.webkt.log/Logger { // de.pmenke.webkt.log/Logger|null[0]
+    constructor <init>(kotlin/String) // de.pmenke.webkt.log/Logger.<init>|<init>(kotlin.String){}[0]
+
+    final fun debug(kotlin/Array<out kotlin/Any?>..., de.pmenke.webkt.log/LoggingAspect? = ...) // de.pmenke.webkt.log/Logger.debug|debug(kotlin.Array<out|kotlin.Any?>...;de.pmenke.webkt.log.LoggingAspect?){}[0]
+    final fun error(de.pmenke.webkt.log/LoggingAspect? = ..., kotlin/Function0<kotlin/String>) // de.pmenke.webkt.log/Logger.error|error(de.pmenke.webkt.log.LoggingAspect?;kotlin.Function0<kotlin.String>){}[0]
+    final fun error(kotlin/Array<out kotlin/Any?>..., de.pmenke.webkt.log/LoggingAspect? = ...) // de.pmenke.webkt.log/Logger.error|error(kotlin.Array<out|kotlin.Any?>...;de.pmenke.webkt.log.LoggingAspect?){}[0]
+    final fun info(de.pmenke.webkt.log/LoggingAspect? = ..., kotlin/Function0<kotlin/String>) // de.pmenke.webkt.log/Logger.info|info(de.pmenke.webkt.log.LoggingAspect?;kotlin.Function0<kotlin.String>){}[0]
+    final fun info(kotlin/Array<out kotlin/Any?>..., de.pmenke.webkt.log/LoggingAspect? = ...) // de.pmenke.webkt.log/Logger.info|info(kotlin.Array<out|kotlin.Any?>...;de.pmenke.webkt.log.LoggingAspect?){}[0]
+    final fun log(de.pmenke.webkt.log/LogLevel, kotlin/Array<out kotlin/Any?>...) // de.pmenke.webkt.log/Logger.log|log(de.pmenke.webkt.log.LogLevel;kotlin.Array<out|kotlin.Any?>...){}[0]
+    final fun shouldLog(de.pmenke.webkt.log/LogLevel, de.pmenke.webkt.log/LoggingAspect?): kotlin/Boolean // de.pmenke.webkt.log/Logger.shouldLog|shouldLog(de.pmenke.webkt.log.LogLevel;de.pmenke.webkt.log.LoggingAspect?){}[0]
+    final fun warn(de.pmenke.webkt.log/LoggingAspect? = ..., kotlin/Function0<kotlin/String>) // de.pmenke.webkt.log/Logger.warn|warn(de.pmenke.webkt.log.LoggingAspect?;kotlin.Function0<kotlin.String>){}[0]
+    final fun warn(kotlin/Array<out kotlin/Any?>..., de.pmenke.webkt.log/LoggingAspect? = ...) // de.pmenke.webkt.log/Logger.warn|warn(kotlin.Array<out|kotlin.Any?>...;de.pmenke.webkt.log.LoggingAspect?){}[0]
+    final inline fun debug(de.pmenke.webkt.log/LoggingAspect? = ..., kotlin/Array<out kotlin/Any?>..., kotlin/Function0<kotlin/String>) // de.pmenke.webkt.log/Logger.debug|debug(de.pmenke.webkt.log.LoggingAspect?;kotlin.Array<out|kotlin.Any?>...;kotlin.Function0<kotlin.String>){}[0]
+}
+
+final class de.pmenke.webkt.services/NavigatorService : kotlin/AutoCloseable { // de.pmenke.webkt.services/NavigatorService|null[0]
+    constructor <init>() // de.pmenke.webkt.services/NavigatorService.<init>|<init>(){}[0]
+
+    final val hash // de.pmenke.webkt.services/NavigatorService.hash|{}hash[0]
+        final fun <get-hash>(): kotlinx.coroutines.flow/StateFlow<kotlin/String> // de.pmenke.webkt.services/NavigatorService.hash.<get-hash>|<get-hash>(){}[0]
+    final val path // de.pmenke.webkt.services/NavigatorService.path|{}path[0]
+        final fun <get-path>(): kotlinx.coroutines.flow/StateFlow<kotlin/String> // de.pmenke.webkt.services/NavigatorService.path.<get-path>|<get-path>(){}[0]
+
+    final fun close() // de.pmenke.webkt.services/NavigatorService.close|close(){}[0]
+    final fun navigateTo(kotlin/String, kotlin/String = ...) // de.pmenke.webkt.services/NavigatorService.navigateTo|navigateTo(kotlin.String;kotlin.String){}[0]
+}
+
+final class de.pmenke.webkt.util/CallbackHandle { // de.pmenke.webkt.util/CallbackHandle|null[0]
+    final fun unsubscribe() // de.pmenke.webkt.util/CallbackHandle.unsubscribe|unsubscribe(){}[0]
+}
+
+final class de.pmenke.webkt.util/Callbacks { // de.pmenke.webkt.util/Callbacks|null[0]
+    constructor <init>() // de.pmenke.webkt.util/Callbacks.<init>|<init>(){}[0]
+
+    final fun <#A1: kotlin/Any?> notify(de.pmenke.webkt.util/CallbackKey<#A1>, #A1) // de.pmenke.webkt.util/Callbacks.notify|notify(de.pmenke.webkt.util.CallbackKey<0:0>;0:0){0§<kotlin.Any?>}[0]
+    final fun <#A1: kotlin/Any?> notifyCatching(de.pmenke.webkt.util/CallbackKey<#A1>, #A1, kotlin/Function1<kotlin/Throwable, kotlin/Unit>) // de.pmenke.webkt.util/Callbacks.notifyCatching|notifyCatching(de.pmenke.webkt.util.CallbackKey<0:0>;0:0;kotlin.Function1<kotlin.Throwable,kotlin.Unit>){0§<kotlin.Any?>}[0]
+    final fun <#A1: kotlin/Any?> subscribe(de.pmenke.webkt.util/CallbackKey<#A1>, kotlin/Function1<#A1, kotlin/Unit>): de.pmenke.webkt.util/CallbackHandle // de.pmenke.webkt.util/Callbacks.subscribe|subscribe(de.pmenke.webkt.util.CallbackKey<0:0>;kotlin.Function1<0:0,kotlin.Unit>){0§<kotlin.Any?>}[0]
+    final fun clear() // de.pmenke.webkt.util/Callbacks.clear|clear(){}[0]
+    final fun clear(de.pmenke.webkt.util/CallbackKey<*>) // de.pmenke.webkt.util/Callbacks.clear|clear(de.pmenke.webkt.util.CallbackKey<*>){}[0]
+    final fun notify(de.pmenke.webkt.util/CallbackKey<kotlin/Unit>) // de.pmenke.webkt.util/Callbacks.notify|notify(de.pmenke.webkt.util.CallbackKey<kotlin.Unit>){}[0]
+    final fun notifyCatching(de.pmenke.webkt.util/CallbackKey<kotlin/Unit>, kotlin/Function1<kotlin/Throwable, kotlin/Unit>) // de.pmenke.webkt.util/Callbacks.notifyCatching|notifyCatching(de.pmenke.webkt.util.CallbackKey<kotlin.Unit>;kotlin.Function1<kotlin.Throwable,kotlin.Unit>){}[0]
+}
+
+final class de.pmenke.webkt.util/HierarchicalAttributeStore : de.pmenke.webkt.util/AttributeStore { // de.pmenke.webkt.util/HierarchicalAttributeStore|null[0]
+    constructor <init>(de.pmenke.webkt.util/AttributeStore? = ...) // de.pmenke.webkt.util/HierarchicalAttributeStore.<init>|<init>(de.pmenke.webkt.util.AttributeStore?){}[0]
+
+    final fun <#A1: kotlin/Any?> get(de.pmenke.webkt.util/AttributeKey<#A1>): #A1? // de.pmenke.webkt.util/HierarchicalAttributeStore.get|get(de.pmenke.webkt.util.AttributeKey<0:0>){0§<kotlin.Any?>}[0]
+    final fun <#A1: kotlin/Any?> set(de.pmenke.webkt.util/AttributeKey<#A1>, #A1?) // de.pmenke.webkt.util/HierarchicalAttributeStore.set|set(de.pmenke.webkt.util.AttributeKey<0:0>;0:0?){0§<kotlin.Any?>}[0]
+    final fun setInherited(de.pmenke.webkt.util/AttributeKey<*>) // de.pmenke.webkt.util/HierarchicalAttributeStore.setInherited|setInherited(de.pmenke.webkt.util.AttributeKey<*>){}[0]
+}
+
+final class de.pmenke.webkt.util/UnverifiedJwt { // de.pmenke.webkt.util/UnverifiedJwt|null[0]
+    constructor <init>(de.pmenke.webkt.util/UnverifiedJwtHeader, de.pmenke.webkt.util/UnverifiedJwtClaims, kotlin/String) // de.pmenke.webkt.util/UnverifiedJwt.<init>|<init>(de.pmenke.webkt.util.UnverifiedJwtHeader;de.pmenke.webkt.util.UnverifiedJwtClaims;kotlin.String){}[0]
+
+    final val claims // de.pmenke.webkt.util/UnverifiedJwt.claims|{}claims[0]
+        final fun <get-claims>(): de.pmenke.webkt.util/UnverifiedJwtClaims // de.pmenke.webkt.util/UnverifiedJwt.claims.<get-claims>|<get-claims>(){}[0]
+    final val header // de.pmenke.webkt.util/UnverifiedJwt.header|{}header[0]
+        final fun <get-header>(): de.pmenke.webkt.util/UnverifiedJwtHeader // de.pmenke.webkt.util/UnverifiedJwt.header.<get-header>|<get-header>(){}[0]
+    final val signatureSegment // de.pmenke.webkt.util/UnverifiedJwt.signatureSegment|{}signatureSegment[0]
+        final fun <get-signatureSegment>(): kotlin/String // de.pmenke.webkt.util/UnverifiedJwt.signatureSegment.<get-signatureSegment>|<get-signatureSegment>(){}[0]
+
+    final fun component1(): de.pmenke.webkt.util/UnverifiedJwtHeader // de.pmenke.webkt.util/UnverifiedJwt.component1|component1(){}[0]
+    final fun component2(): de.pmenke.webkt.util/UnverifiedJwtClaims // de.pmenke.webkt.util/UnverifiedJwt.component2|component2(){}[0]
+    final fun component3(): kotlin/String // de.pmenke.webkt.util/UnverifiedJwt.component3|component3(){}[0]
+    final fun copy(de.pmenke.webkt.util/UnverifiedJwtHeader = ..., de.pmenke.webkt.util/UnverifiedJwtClaims = ..., kotlin/String = ...): de.pmenke.webkt.util/UnverifiedJwt // de.pmenke.webkt.util/UnverifiedJwt.copy|copy(de.pmenke.webkt.util.UnverifiedJwtHeader;de.pmenke.webkt.util.UnverifiedJwtClaims;kotlin.String){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // de.pmenke.webkt.util/UnverifiedJwt.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // de.pmenke.webkt.util/UnverifiedJwt.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // de.pmenke.webkt.util/UnverifiedJwt.toString|toString(){}[0]
+
+    final object Companion { // de.pmenke.webkt.util/UnverifiedJwt.Companion|null[0]
+        final fun decode(kotlin/String): de.pmenke.webkt.util/UnverifiedJwt // de.pmenke.webkt.util/UnverifiedJwt.Companion.decode|decode(kotlin.String){}[0]
+    }
+}
+
+final class de.pmenke.webkt.util/UnverifiedJwtClaims { // de.pmenke.webkt.util/UnverifiedJwtClaims|null[0]
+    constructor <init>(kotlinx.serialization.json/JsonObject) // de.pmenke.webkt.util/UnverifiedJwtClaims.<init>|<init>(kotlinx.serialization.json.JsonObject){}[0]
+
+    final fun get(kotlin/String): kotlinx.serialization.json/JsonElement? // de.pmenke.webkt.util/UnverifiedJwtClaims.get|get(kotlin.String){}[0]
+    final fun getInstantOrNull(kotlin/String): kotlin.time/Instant? // de.pmenke.webkt.util/UnverifiedJwtClaims.getInstantOrNull|getInstantOrNull(kotlin.String){}[0]
+    final fun getStringListOrEmpty(kotlin/String): kotlin.collections/List<kotlin/String> // de.pmenke.webkt.util/UnverifiedJwtClaims.getStringListOrEmpty|getStringListOrEmpty(kotlin.String){}[0]
+    final fun getStringOrNull(kotlin/String): kotlin/String? // de.pmenke.webkt.util/UnverifiedJwtClaims.getStringOrNull|getStringOrNull(kotlin.String){}[0]
+}
+
+final class de.pmenke.webkt.util/UnverifiedJwtHeader { // de.pmenke.webkt.util/UnverifiedJwtHeader|null[0]
+    constructor <init>(kotlin/String, kotlin/String? = ..., kotlin/String? = ...) // de.pmenke.webkt.util/UnverifiedJwtHeader.<init>|<init>(kotlin.String;kotlin.String?;kotlin.String?){}[0]
+
+    final val alg // de.pmenke.webkt.util/UnverifiedJwtHeader.alg|{}alg[0]
+        final fun <get-alg>(): kotlin/String // de.pmenke.webkt.util/UnverifiedJwtHeader.alg.<get-alg>|<get-alg>(){}[0]
+    final val kid // de.pmenke.webkt.util/UnverifiedJwtHeader.kid|{}kid[0]
+        final fun <get-kid>(): kotlin/String? // de.pmenke.webkt.util/UnverifiedJwtHeader.kid.<get-kid>|<get-kid>(){}[0]
+    final val typ // de.pmenke.webkt.util/UnverifiedJwtHeader.typ|{}typ[0]
+        final fun <get-typ>(): kotlin/String? // de.pmenke.webkt.util/UnverifiedJwtHeader.typ.<get-typ>|<get-typ>(){}[0]
+
+    final fun component1(): kotlin/String // de.pmenke.webkt.util/UnverifiedJwtHeader.component1|component1(){}[0]
+    final fun component2(): kotlin/String? // de.pmenke.webkt.util/UnverifiedJwtHeader.component2|component2(){}[0]
+    final fun component3(): kotlin/String? // de.pmenke.webkt.util/UnverifiedJwtHeader.component3|component3(){}[0]
+    final fun copy(kotlin/String = ..., kotlin/String? = ..., kotlin/String? = ...): de.pmenke.webkt.util/UnverifiedJwtHeader // de.pmenke.webkt.util/UnverifiedJwtHeader.copy|copy(kotlin.String;kotlin.String?;kotlin.String?){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // de.pmenke.webkt.util/UnverifiedJwtHeader.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // de.pmenke.webkt.util/UnverifiedJwtHeader.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // de.pmenke.webkt.util/UnverifiedJwtHeader.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<de.pmenke.webkt.util/UnverifiedJwtHeader> { // de.pmenke.webkt.util/UnverifiedJwtHeader.$serializer|null[0]
+        final val descriptor // de.pmenke.webkt.util/UnverifiedJwtHeader.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // de.pmenke.webkt.util/UnverifiedJwtHeader.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // de.pmenke.webkt.util/UnverifiedJwtHeader.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): de.pmenke.webkt.util/UnverifiedJwtHeader // de.pmenke.webkt.util/UnverifiedJwtHeader.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, de.pmenke.webkt.util/UnverifiedJwtHeader) // de.pmenke.webkt.util/UnverifiedJwtHeader.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;de.pmenke.webkt.util.UnverifiedJwtHeader){}[0]
+    }
+
+    final object Companion { // de.pmenke.webkt.util/UnverifiedJwtHeader.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<de.pmenke.webkt.util/UnverifiedJwtHeader> // de.pmenke.webkt.util/UnverifiedJwtHeader.Companion.serializer|serializer(){}[0]
+    }
+}
+
+open class de.pmenke.webkt.js_interop/JsObject : kotlin.js/JsAny { // de.pmenke.webkt.js_interop/JsObject|null[0]
+    constructor <init>() // de.pmenke.webkt.js_interop/JsObject.<init>|<init>(){}[0]
+
+    final fun get(kotlin/String): kotlin.js/JsAny? // de.pmenke.webkt.js_interop/JsObject.get|get(kotlin.String){}[0]
+    final fun set(kotlin/String, kotlin.js/JsAny?) // de.pmenke.webkt.js_interop/JsObject.set|set(kotlin.String;kotlin.js.JsAny?){}[0]
+}
+
+final object de.pmenke.webkt.dom_interop/DomUtil { // de.pmenke.webkt.dom_interop/DomUtil|null[0]
+    final fun (org.w3c.dom/Element).replaceWith(kotlin/Function1<kotlinx.html/TagConsumer<org.w3c.dom/Element>, kotlin/Unit>): org.w3c.dom/Element // de.pmenke.webkt.dom_interop/DomUtil.replaceWith|replaceWith@org.w3c.dom.Element(kotlin.Function1<kotlinx.html.TagConsumer<org.w3c.dom.Element>,kotlin.Unit>){}[0]
+    final fun (org.w3c.dom/Node).removeAllChildren() // de.pmenke.webkt.dom_interop/DomUtil.removeAllChildren|removeAllChildren@org.w3c.dom.Node(){}[0]
+    final fun joinClasses(kotlin/Array<out kotlin/String?>...): kotlin/String // de.pmenke.webkt.dom_interop/DomUtil.joinClasses|joinClasses(kotlin.Array<out|kotlin.String?>...){}[0]
+    final inline fun <#A1: reified kotlin/Any?> (org.w3c.dom/Storage).getJson(kotlin/String): #A1? // de.pmenke.webkt.dom_interop/DomUtil.getJson|getJson@org.w3c.dom.Storage(kotlin.String){0§<kotlin.Any?>}[0]
+    final inline fun <#A1: reified kotlin/Any?> (org.w3c.dom/Storage).setJson(kotlin/String, #A1) // de.pmenke.webkt.dom_interop/DomUtil.setJson|setJson@org.w3c.dom.Storage(kotlin.String;0:0){0§<kotlin.Any?>}[0]
+    final inline fun <#A1: reified org.w3c.dom/Element> (kotlinx.html/TagConsumer<org.w3c.dom/Element>).cast(): kotlinx.html.consumers/FinalizeConsumer<org.w3c.dom/Element, #A1> // de.pmenke.webkt.dom_interop/DomUtil.cast|cast@kotlinx.html.TagConsumer<org.w3c.dom.Element>(){0§<org.w3c.dom.Element>}[0]
+}
+
+final object de.pmenke.webkt.js_interop/ConsoleUtil { // de.pmenke.webkt.js_interop/ConsoleUtil|null[0]
+    final fun (web.console/Console).error(kotlin/Array<out kotlin/Any?>...) // de.pmenke.webkt.js_interop/ConsoleUtil.error|error@web.console.Console(kotlin.Array<out|kotlin.Any?>...){}[0]
+    final fun (web.console/Console).info(kotlin/Array<out kotlin/Any?>...) // de.pmenke.webkt.js_interop/ConsoleUtil.info|info@web.console.Console(kotlin.Array<out|kotlin.Any?>...){}[0]
+    final fun (web.console/Console).log(kotlin/Array<out kotlin/Any?>...) // de.pmenke.webkt.js_interop/ConsoleUtil.log|log@web.console.Console(kotlin.Array<out|kotlin.Any?>...){}[0]
+    final fun (web.console/Console).warn(kotlin/Array<out kotlin/Any?>...) // de.pmenke.webkt.js_interop/ConsoleUtil.warn|warn@web.console.Console(kotlin.Array<out|kotlin.Any?>...){}[0]
+}
+
+final object de.pmenke.webkt.js_interop/Functions { // de.pmenke.webkt.js_interop/Functions|null[0]
+    final fun <#A1: kotlin.js/JsAny?, #B1: kotlin.js/JsAny?, #C1: kotlin.js/JsAny?, #D1: kotlin.js/JsAny?, #E1: kotlin.js/JsAny?> function4(kotlin/Function4<#A1, #B1, #C1, #D1, #E1>): js.function/ContextFunction<kotlin/Nothing?, js.array/Tuple, #E1> // de.pmenke.webkt.js_interop/Functions.function4|function4(kotlin.Function4<0:0,0:1,0:2,0:3,0:4>){0§<kotlin.js.JsAny?>;1§<kotlin.js.JsAny?>;2§<kotlin.js.JsAny?>;3§<kotlin.js.JsAny?>;4§<kotlin.js.JsAny?>}[0]
+    final fun <#A1: kotlin.js/JsAny?, #B1: kotlin.js/JsAny?, #C1: kotlin.js/JsAny?, #D1: kotlin.js/JsAny?> function3(kotlin/Function3<#A1, #B1, #C1, #D1>): js.function/ContextFunction<kotlin/Nothing?, js.array/Tuple, #D1> // de.pmenke.webkt.js_interop/Functions.function3|function3(kotlin.Function3<0:0,0:1,0:2,0:3>){0§<kotlin.js.JsAny?>;1§<kotlin.js.JsAny?>;2§<kotlin.js.JsAny?>;3§<kotlin.js.JsAny?>}[0]
+    final fun <#A1: kotlin.js/JsAny?, #B1: kotlin.js/JsAny?, #C1: kotlin.js/JsAny?> function2(kotlin/Function2<#A1, #B1, #C1>): js.function/ContextFunction<kotlin/Nothing?, js.array/Tuple, #C1> // de.pmenke.webkt.js_interop/Functions.function2|function2(kotlin.Function2<0:0,0:1,0:2>){0§<kotlin.js.JsAny?>;1§<kotlin.js.JsAny?>;2§<kotlin.js.JsAny?>}[0]
+    final fun <#A1: kotlin.js/JsAny?, #B1: kotlin.js/JsAny?> function1(kotlin/Function1<#A1, #B1>): js.function/ContextFunction<kotlin/Nothing?, js.array/Tuple, #B1> // de.pmenke.webkt.js_interop/Functions.function1|function1(kotlin.Function1<0:0,0:1>){0§<kotlin.js.JsAny?>;1§<kotlin.js.JsAny?>}[0]
+    final fun <#A1: kotlin.js/JsAny?> function0(kotlin/Function0<#A1>): js.function/ContextFunction<kotlin/Nothing?, js.array/Tuple, #A1> // de.pmenke.webkt.js_interop/Functions.function0|function0(kotlin.Function0<0:0>){0§<kotlin.js.JsAny?>}[0]
+}
+
+final object de.pmenke.webkt.js_interop/JSON { // de.pmenke.webkt.js_interop/JSON|null[0]
+    final fun parse(kotlin/String): kotlin.js/JsAny? // de.pmenke.webkt.js_interop/JSON.parse|parse(kotlin.String){}[0]
+    final fun stringify(kotlin.js/JsAny?): kotlin/String // de.pmenke.webkt.js_interop/JSON.stringify|stringify(kotlin.js.JsAny?){}[0]
+}
+
+final object de.pmenke.webkt.js_interop/JsUtil { // de.pmenke.webkt.js_interop/JsUtil|null[0]
+    final fun (js.typedarrays/Uint8Array<*>).toBase64Url(): kotlin/String // de.pmenke.webkt.js_interop/JsUtil.toBase64Url|toBase64Url@js.typedarrays.Uint8Array<*>(){}[0]
+    final fun (kotlin/Any).toJsAny(): kotlin.js/JsAny // de.pmenke.webkt.js_interop/JsUtil.toJsAny|toJsAny@kotlin.Any(){}[0]
+    final fun <#A1: kotlin.js/JsAny?> (org.w3c.dom/ItemArrayLike<#A1>).asSequence(): kotlin.sequences/Sequence<#A1> // de.pmenke.webkt.js_interop/JsUtil.asSequence|asSequence@org.w3c.dom.ItemArrayLike<0:0>(){0§<kotlin.js.JsAny?>}[0]
+    final inline fun <#A1: kotlin.js/JsAny?> (kotlin.js/JsArray<#A1>).forEach(kotlin/Function1<#A1, kotlin/Unit>) // de.pmenke.webkt.js_interop/JsUtil.forEach|forEach@kotlin.js.JsArray<0:0>(kotlin.Function1<0:0,kotlin.Unit>){0§<kotlin.js.JsAny?>}[0]
+    final inline fun <#A1: kotlin.js/JsAny?> (org.w3c.dom/ItemArrayLike<#A1>).forEach(kotlin/Function1<#A1, kotlin/Unit>) // de.pmenke.webkt.js_interop/JsUtil.forEach|forEach@org.w3c.dom.ItemArrayLike<0:0>(kotlin.Function1<0:0,kotlin.Unit>){0§<kotlin.js.JsAny?>}[0]
+}
+
+final object de.pmenke.webkt.js_interop/PromiseUtil { // de.pmenke.webkt.js_interop/PromiseUtil|null[0]
+    final fun <#A1: kotlin.js/JsAny?, #B1: kotlin.js/JsAny?> (kotlin.js/Promise<#A1>).flatThen(kotlin/Function1<#A1, kotlin.js/Promise<#B1>>?): kotlin.js/Promise<#B1> // de.pmenke.webkt.js_interop/PromiseUtil.flatThen|flatThen@kotlin.js.Promise<0:0>(kotlin.Function1<0:0,kotlin.js.Promise<0:1>>?){0§<kotlin.js.JsAny?>;1§<kotlin.js.JsAny?>}[0]
+    final fun <#A1: kotlin.js/JsAny?, #B1: kotlin.js/JsAny?> (kotlin.js/Promise<#A1>).flatThen(kotlin/Function1<#A1, kotlin.js/Promise<#B1>>?, kotlin/Function1<kotlin.js/JsAny, kotlin.js/Promise<#B1>>?): kotlin.js/Promise<#B1> // de.pmenke.webkt.js_interop/PromiseUtil.flatThen|flatThen@kotlin.js.Promise<0:0>(kotlin.Function1<0:0,kotlin.js.Promise<0:1>>?;kotlin.Function1<kotlin.js.JsAny,kotlin.js.Promise<0:1>>?){0§<kotlin.js.JsAny?>;1§<kotlin.js.JsAny?>}[0]
+    final fun <#A1: kotlin.js/JsAny?, #B1: kotlin.js/JsAny?> (kotlin.js/Promise<#A1>).flatThen(kotlin/Function1<#A1, kotlin.js/Promise<#B1>>?, kotlin/Function1<kotlin.js/JsAny, kotlin.js/Promise<kotlin/Nothing>>?): kotlin.js/Promise<#B1> // de.pmenke.webkt.js_interop/PromiseUtil.flatThen|flatThen@kotlin.js.Promise<0:0>(kotlin.Function1<0:0,kotlin.js.Promise<0:1>>?;kotlin.Function1<kotlin.js.JsAny,kotlin.js.Promise<kotlin.Nothing>>?){0§<kotlin.js.JsAny?>;1§<kotlin.js.JsAny?>}[0]
+    final suspend fun <#A1: kotlin.js/JsAny?> (kotlin.js/Promise<#A1>).await(): #A1 // de.pmenke.webkt.js_interop/PromiseUtil.await|await@kotlin.js.Promise<0:0>(){0§<kotlin.js.JsAny?>}[0]
+}
+
+final object de.pmenke.webkt.log/LoggingConfig { // de.pmenke.webkt.log/LoggingConfig|null[0]
+    final fun clear() // de.pmenke.webkt.log/LoggingConfig.clear|clear(){}[0]
+    final fun setAspectLevel(de.pmenke.webkt.log/LoggingAspect, de.pmenke.webkt.log/LogLevel) // de.pmenke.webkt.log/LoggingConfig.setAspectLevel|setAspectLevel(de.pmenke.webkt.log.LoggingAspect;de.pmenke.webkt.log.LogLevel){}[0]
+    final fun setLevel(kotlin/String, de.pmenke.webkt.log/LogLevel) // de.pmenke.webkt.log/LoggingConfig.setLevel|setLevel(kotlin.String;de.pmenke.webkt.log.LogLevel){}[0]
+}
+
+final object de.pmenke.webkt.util/ComponentUtil { // de.pmenke.webkt.util/ComponentUtil|null[0]
+    final val isRoot // de.pmenke.webkt.util/ComponentUtil.isRoot|@de.pmenke.webkt.Component{}isRoot[0]
+        final fun (de.pmenke.webkt/Component).<get-isRoot>(): kotlin/Boolean // de.pmenke.webkt.util/ComponentUtil.isRoot.<get-isRoot>|<get-isRoot>@de.pmenke.webkt.Component(){}[0]
+    final val parents // de.pmenke.webkt.util/ComponentUtil.parents|@de.pmenke.webkt.Component{}parents[0]
+        final fun (de.pmenke.webkt/Component).<get-parents>(): kotlin.sequences/Sequence<de.pmenke.webkt/Component> // de.pmenke.webkt.util/ComponentUtil.parents.<get-parents>|<get-parents>@de.pmenke.webkt.Component(){}[0]
+
+    final inline fun <#A1: reified de.pmenke.webkt/Component> (de.pmenke.webkt/Component).findAncestor(): #A1? // de.pmenke.webkt.util/ComponentUtil.findAncestor|findAncestor@de.pmenke.webkt.Component(){0§<de.pmenke.webkt.Component>}[0]
+}
+
+final object de.pmenke.webkt.util/Debug { // de.pmenke.webkt.util/Debug|null[0]
+    final const val ENABLED // de.pmenke.webkt.util/Debug.ENABLED|{}ENABLED[0]
+        final fun <get-ENABLED>(): kotlin/Boolean // de.pmenke.webkt.util/Debug.ENABLED.<get-ENABLED>|<get-ENABLED>(){}[0]
+
+    final inline fun ifDebugEnabled(kotlin/Function0<kotlin/Unit>) // de.pmenke.webkt.util/Debug.ifDebugEnabled|ifDebugEnabled(kotlin.Function0<kotlin.Unit>){}[0]
+}
+
+final object de.pmenke.webkt.util/IdGenerator { // de.pmenke.webkt.util/IdGenerator|null[0]
+    final val next // de.pmenke.webkt.util/IdGenerator.next|{}next[0]
+        final fun <get-next>(): kotlin/String // de.pmenke.webkt.util/IdGenerator.next.<get-next>|<get-next>(){}[0]
+}
+
+final object de.pmenke.webkt.util/SequenceUtil { // de.pmenke.webkt.util/SequenceUtil|null[0]
+    final inline fun <#A1: reified kotlin/Any?> (kotlin.sequences/Sequence<*>).firstInstance(): #A1 // de.pmenke.webkt.util/SequenceUtil.firstInstance|firstInstance@kotlin.sequences.Sequence<*>(){0§<kotlin.Any?>}[0]
+    final inline fun <#A1: reified kotlin/Any?> (kotlin.sequences/Sequence<*>).firstInstanceOrNull(): #A1? // de.pmenke.webkt.util/SequenceUtil.firstInstanceOrNull|firstInstanceOrNull@kotlin.sequences.Sequence<*>(){0§<kotlin.Any?>}[0]
+}
+
+final object de.pmenke.webkt.util/StateFlowUtil { // de.pmenke.webkt.util/StateFlowUtil|null[0]
+    final fun <#A1: kotlin/Any?> (kotlinx.coroutines.flow/Flow<#A1>).launchStateIn(kotlinx.coroutines/CoroutineScope): kotlinx.coroutines.flow/StateFlow<#A1?> // de.pmenke.webkt.util/StateFlowUtil.launchStateIn|launchStateIn@kotlinx.coroutines.flow.Flow<0:0>(kotlinx.coroutines.CoroutineScope){0§<kotlin.Any?>}[0]
+}
+
+final val de.pmenke.webkt.util/audience // de.pmenke.webkt.util/audience|@de.pmenke.webkt.util.UnverifiedJwtClaims{}audience[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-audience>(): kotlin/String? // de.pmenke.webkt.util/audience.<get-audience>|<get-audience>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/audience // de.pmenke.webkt.util/audience|@de.pmenke.webkt.util.UnverifiedJwt{}audience[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-audience>(): kotlin/String? // de.pmenke.webkt.util/audience.<get-audience>|<get-audience>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+final val de.pmenke.webkt.util/audiences // de.pmenke.webkt.util/audiences|@de.pmenke.webkt.util.UnverifiedJwtClaims{}audiences[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-audiences>(): kotlin.collections/List<kotlin/String> // de.pmenke.webkt.util/audiences.<get-audiences>|<get-audiences>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/audiences // de.pmenke.webkt.util/audiences|@de.pmenke.webkt.util.UnverifiedJwt{}audiences[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-audiences>(): kotlin.collections/List<kotlin/String> // de.pmenke.webkt.util/audiences.<get-audiences>|<get-audiences>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+final val de.pmenke.webkt.util/expiresAt // de.pmenke.webkt.util/expiresAt|@de.pmenke.webkt.util.UnverifiedJwtClaims{}expiresAt[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-expiresAt>(): kotlin.time/Instant // de.pmenke.webkt.util/expiresAt.<get-expiresAt>|<get-expiresAt>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/expiresAt // de.pmenke.webkt.util/expiresAt|@de.pmenke.webkt.util.UnverifiedJwt{}expiresAt[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-expiresAt>(): kotlin.time/Instant // de.pmenke.webkt.util/expiresAt.<get-expiresAt>|<get-expiresAt>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+final val de.pmenke.webkt.util/id // de.pmenke.webkt.util/id|@de.pmenke.webkt.util.UnverifiedJwtClaims{}id[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-id>(): kotlin/String? // de.pmenke.webkt.util/id.<get-id>|<get-id>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/id // de.pmenke.webkt.util/id|@de.pmenke.webkt.util.UnverifiedJwt{}id[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-id>(): kotlin/String? // de.pmenke.webkt.util/id.<get-id>|<get-id>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+final val de.pmenke.webkt.util/issuedAt // de.pmenke.webkt.util/issuedAt|@de.pmenke.webkt.util.UnverifiedJwtClaims{}issuedAt[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-issuedAt>(): kotlin.time/Instant? // de.pmenke.webkt.util/issuedAt.<get-issuedAt>|<get-issuedAt>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/issuedAt // de.pmenke.webkt.util/issuedAt|@de.pmenke.webkt.util.UnverifiedJwt{}issuedAt[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-issuedAt>(): kotlin.time/Instant? // de.pmenke.webkt.util/issuedAt.<get-issuedAt>|<get-issuedAt>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+final val de.pmenke.webkt.util/issuer // de.pmenke.webkt.util/issuer|@de.pmenke.webkt.util.UnverifiedJwtClaims{}issuer[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-issuer>(): kotlin/String? // de.pmenke.webkt.util/issuer.<get-issuer>|<get-issuer>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/issuer // de.pmenke.webkt.util/issuer|@de.pmenke.webkt.util.UnverifiedJwt{}issuer[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-issuer>(): kotlin/String? // de.pmenke.webkt.util/issuer.<get-issuer>|<get-issuer>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+final val de.pmenke.webkt.util/notBefore // de.pmenke.webkt.util/notBefore|@de.pmenke.webkt.util.UnverifiedJwtClaims{}notBefore[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-notBefore>(): kotlin.time/Instant? // de.pmenke.webkt.util/notBefore.<get-notBefore>|<get-notBefore>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/notBefore // de.pmenke.webkt.util/notBefore|@de.pmenke.webkt.util.UnverifiedJwt{}notBefore[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-notBefore>(): kotlin.time/Instant? // de.pmenke.webkt.util/notBefore.<get-notBefore>|<get-notBefore>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+final val de.pmenke.webkt.util/subject // de.pmenke.webkt.util/subject|@de.pmenke.webkt.util.UnverifiedJwtClaims{}subject[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwtClaims).<get-subject>(): kotlin/String? // de.pmenke.webkt.util/subject.<get-subject>|<get-subject>@de.pmenke.webkt.util.UnverifiedJwtClaims(){}[0]
+final val de.pmenke.webkt.util/subject // de.pmenke.webkt.util/subject|@de.pmenke.webkt.util.UnverifiedJwt{}subject[0]
+    final fun (de.pmenke.webkt.util/UnverifiedJwt).<get-subject>(): kotlin/String? // de.pmenke.webkt.util/subject.<get-subject>|<get-subject>@de.pmenke.webkt.util.UnverifiedJwt(){}[0]
+
+final fun (de.pmenke.webkt/Component).de.pmenke.webkt.koin_interop/koinScope(): org.koin.core.scope/Scope // de.pmenke.webkt.koin_interop/koinScope|koinScope@de.pmenke.webkt.Component(){}[0]
+final fun (de.pmenke.webkt/RenderReceiver).de.pmenke.webkt.koin_interop/koinScope(): org.koin.core.scope/Scope // de.pmenke.webkt.koin_interop/koinScope|koinScope@de.pmenke.webkt.RenderReceiver(){}[0]
+final fun (de.pmenke.webkt/RenderReceiver).de.pmenke.webkt.util/sortLink(de.pmenke.webkt.util/SortElement) // de.pmenke.webkt.util/sortLink|sortLink@de.pmenke.webkt.RenderReceiver(de.pmenke.webkt.util.SortElement){}[0]
+final fun (kotlin.collections/List<org.w3c.dom/HTMLInputElement>).de.pmenke.webkt.util/bindRadio(de.pmenke.webkt.util/ControlValue<kotlin/String>) // de.pmenke.webkt.util/bindRadio|bindRadio@kotlin.collections.List<org.w3c.dom.HTMLInputElement>(de.pmenke.webkt.util.ControlValue<kotlin.String>){}[0]
+final fun (kotlin.collections/Map<*, *>).de.pmenke.webkt.js_interop/toJsObject(): de.pmenke.webkt.js_interop/JsObject // de.pmenke.webkt.js_interop/toJsObject|toJsObject@kotlin.collections.Map<*,*>(){}[0]
+final fun (org.w3c.dom/HTMLInputElement).de.pmenke.webkt.util/bind(de.pmenke.webkt.util/ControlValue<kotlin/String>) // de.pmenke.webkt.util/bind|bind@org.w3c.dom.HTMLInputElement(de.pmenke.webkt.util.ControlValue<kotlin.String>){}[0]
+final fun (org.w3c.dom/HTMLSelectElement).de.pmenke.webkt.util/bind(de.pmenke.webkt.util/ControlValue<kotlin/String>) // de.pmenke.webkt.util/bind|bind@org.w3c.dom.HTMLSelectElement(de.pmenke.webkt.util.ControlValue<kotlin.String>){}[0]
+final fun (org.w3c.dom/HTMLTextAreaElement).de.pmenke.webkt.util/bind(de.pmenke.webkt.util/ControlValue<kotlin/String>) // de.pmenke.webkt.util/bind|bind@org.w3c.dom.HTMLTextAreaElement(de.pmenke.webkt.util.ControlValue<kotlin.String>){}[0]
+final fun <#A: de.pmenke.webkt/Component> (de.pmenke.webkt/Component).de.pmenke.webkt.koin_interop/getComponent(kotlin.reflect/KClass<#A>, kotlin/Function0<org.koin.core.parameter/ParametersHolder>? = ...): #A // de.pmenke.webkt.koin_interop/getComponent|getComponent@de.pmenke.webkt.Component(kotlin.reflect.KClass<0:0>;kotlin.Function0<org.koin.core.parameter.ParametersHolder>?){0§<de.pmenke.webkt.Component>}[0]
+final fun <#A: de.pmenke.webkt/Component> (de.pmenke.webkt/RenderReceiver).de.pmenke.webkt.koin_interop/getComponent(kotlin.reflect/KClass<#A>, kotlin/Function0<org.koin.core.parameter/ParametersHolder>? = ...): #A // de.pmenke.webkt.koin_interop/getComponent|getComponent@de.pmenke.webkt.RenderReceiver(kotlin.reflect.KClass<0:0>;kotlin.Function0<org.koin.core.parameter.ParametersHolder>?){0§<de.pmenke.webkt.Component>}[0]
+final fun <#A: de.pmenke.webkt/Component> de.pmenke.webkt/constructComponent(kotlin/Function0<#A>): #A // de.pmenke.webkt/constructComponent|constructComponent(kotlin.Function0<0:0>){0§<de.pmenke.webkt.Component>}[0]
+final fun <#A: kotlin/Any> de.pmenke.webkt/route(kotlin/Function1<de.pmenke.webkt/Route<#A>, kotlin/Unit>): de.pmenke.webkt/Route<#A> // de.pmenke.webkt/route|route(kotlin.Function1<de.pmenke.webkt.Route<0:0>,kotlin.Unit>){0§<kotlin.Any>}[0]
+final fun <#A: kotlin/Any?, #B: kotlin/Any> (org.w3c.dom/HTMLInputElement).de.pmenke.webkt.util/bind(de.pmenke.webkt.util/ControlValue<#A>, kotlin.reflect/KMutableProperty0<#B>, kotlin/Function1<#B, #A>, kotlin/Function1<#A, #B>) // de.pmenke.webkt.util/bind|bind@org.w3c.dom.HTMLInputElement(de.pmenke.webkt.util.ControlValue<0:0>;kotlin.reflect.KMutableProperty0<0:1>;kotlin.Function1<0:1,0:0>;kotlin.Function1<0:0,0:1>){0§<kotlin.Any?>;1§<kotlin.Any>}[0]
+final fun <#A: kotlin/Any?, #B: kotlin/Any?, #C: kotlin/Any?, #D: kotlin/Any?, #E: kotlin/Any?> (de.pmenke.webkt.util/ObservableValue<#A>).de.pmenke.webkt.util/combineValues(de.pmenke.webkt.util/ObservableValue<#B>, de.pmenke.webkt.util/ObservableValue<#C>, de.pmenke.webkt.util/ObservableValue<#D>, kotlin/Function4<#A, #B, #C, #D, #E>): de.pmenke.webkt.util/ObservableValue<#E> // de.pmenke.webkt.util/combineValues|combineValues@de.pmenke.webkt.util.ObservableValue<0:0>(de.pmenke.webkt.util.ObservableValue<0:1>;de.pmenke.webkt.util.ObservableValue<0:2>;de.pmenke.webkt.util.ObservableValue<0:3>;kotlin.Function4<0:0,0:1,0:2,0:3,0:4>){0§<kotlin.Any?>;1§<kotlin.Any?>;2§<kotlin.Any?>;3§<kotlin.Any?>;4§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?, #B: kotlin/Any?, #C: kotlin/Any?, #D: kotlin/Any?> (de.pmenke.webkt.util/ObservableValue<#A>).de.pmenke.webkt.util/combineValues(de.pmenke.webkt.util/ObservableValue<#B>, de.pmenke.webkt.util/ObservableValue<#C>, kotlin/Function3<#A, #B, #C, #D>): de.pmenke.webkt.util/ObservableValue<#D> // de.pmenke.webkt.util/combineValues|combineValues@de.pmenke.webkt.util.ObservableValue<0:0>(de.pmenke.webkt.util.ObservableValue<0:1>;de.pmenke.webkt.util.ObservableValue<0:2>;kotlin.Function3<0:0,0:1,0:2,0:3>){0§<kotlin.Any?>;1§<kotlin.Any?>;2§<kotlin.Any?>;3§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?, #B: kotlin/Any?, #C: kotlin/Any?> (de.pmenke.webkt.util/ObservableValue<#A>).de.pmenke.webkt.util/combineValues(de.pmenke.webkt.util/ObservableValue<#B>, kotlin/Function2<#A, #B, #C>): de.pmenke.webkt.util/ObservableValue<#C> // de.pmenke.webkt.util/combineValues|combineValues@de.pmenke.webkt.util.ObservableValue<0:0>(de.pmenke.webkt.util.ObservableValue<0:1>;kotlin.Function2<0:0,0:1,0:2>){0§<kotlin.Any?>;1§<kotlin.Any?>;2§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?, #B: kotlin/Any?> (de.pmenke.webkt.util/ObservableValue<#A>).de.pmenke.webkt.util/flatMapLatestValue(kotlin/Function1<#A, de.pmenke.webkt.util/ObservableValue<#B>>): de.pmenke.webkt.util/ObservableValue<#B> // de.pmenke.webkt.util/flatMapLatestValue|flatMapLatestValue@de.pmenke.webkt.util.ObservableValue<0:0>(kotlin.Function1<0:0,de.pmenke.webkt.util.ObservableValue<0:1>>){0§<kotlin.Any?>;1§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?, #B: kotlin/Any?> (de.pmenke.webkt.util/ObservableValue<#A>).de.pmenke.webkt.util/mapValue(kotlin/Function1<#A, #B>): de.pmenke.webkt.util/ObservableValue<#B> // de.pmenke.webkt.util/mapValue|mapValue@de.pmenke.webkt.util.ObservableValue<0:0>(kotlin.Function1<0:0,0:1>){0§<kotlin.Any?>;1§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?, #B: kotlin/Any?> (kotlin.collections/Iterable<de.pmenke.webkt.util/ObservableValue<#A>>).de.pmenke.webkt.util/combineValues(kotlin/Function1<kotlin.collections/List<#A>, #B>): de.pmenke.webkt.util/ObservableValue<#B> // de.pmenke.webkt.util/combineValues|combineValues@kotlin.collections.Iterable<de.pmenke.webkt.util.ObservableValue<0:0>>(kotlin.Function1<kotlin.collections.List<0:0>,0:1>){0§<kotlin.Any?>;1§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?> (de.pmenke.webkt.util/CachingFlow<#A>).de.pmenke.webkt.util/onSubscriptionRefreshIn(kotlinx.coroutines/CoroutineScope): kotlinx.coroutines.flow/SharedFlow<#A> // de.pmenke.webkt.util/onSubscriptionRefreshIn|onSubscriptionRefreshIn@de.pmenke.webkt.util.CachingFlow<0:0>(kotlinx.coroutines.CoroutineScope){0§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?> (kotlinx.coroutines.flow/Flow<kotlin/Result<kotlin.collections/List<#A>>?>).de.pmenke.webkt.util/sortedWith(de.pmenke.webkt.util/SortControls<#A>): kotlinx.coroutines.flow/Flow<kotlin/Result<kotlin.collections/List<#A>>?> // de.pmenke.webkt.util/sortedWith|sortedWith@kotlinx.coroutines.flow.Flow<kotlin.Result<kotlin.collections.List<0:0>>?>(de.pmenke.webkt.util.SortControls<0:0>){0§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?> (kotlinx.coroutines.flow/StateFlow<#A>).de.pmenke.webkt.util/asObservableValue(): de.pmenke.webkt.util/ObservableValue<#A> // de.pmenke.webkt.util/asObservableValue|asObservableValue@kotlinx.coroutines.flow.StateFlow<0:0>(){0§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?> (org.w3c.dom/HTMLInputElement).de.pmenke.webkt.util/bind(de.pmenke.webkt.util/ControlValue<#A>, kotlin/Function1<kotlin/String, #A>, kotlin/Function1<#A, kotlin/String>) // de.pmenke.webkt.util/bind|bind@org.w3c.dom.HTMLInputElement(de.pmenke.webkt.util.ControlValue<0:0>;kotlin.Function1<kotlin.String,0:0>;kotlin.Function1<0:0,kotlin.String>){0§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?> (org.w3c.dom/HTMLSelectElement).de.pmenke.webkt.util/bind(de.pmenke.webkt.util/ControlValue<#A>, kotlin/Function1<kotlin/String, #A>, kotlin/Function1<#A, kotlin/String>) // de.pmenke.webkt.util/bind|bind@org.w3c.dom.HTMLSelectElement(de.pmenke.webkt.util.ControlValue<0:0>;kotlin.Function1<kotlin.String,0:0>;kotlin.Function1<0:0,kotlin.String>){0§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?> (org.w3c.dom/HTMLTextAreaElement).de.pmenke.webkt.util/bind(de.pmenke.webkt.util/ControlValue<#A>, kotlin/Function1<kotlin/String, #A>, kotlin/Function1<#A, kotlin/String>) // de.pmenke.webkt.util/bind|bind@org.w3c.dom.HTMLTextAreaElement(de.pmenke.webkt.util.ControlValue<0:0>;kotlin.Function1<kotlin.String,0:0>;kotlin.Function1<0:0,kotlin.String>){0§<kotlin.Any?>}[0]
+final fun <#A: kotlin/Any?> de.pmenke.webkt.util/MutableCachingFlow(kotlin.coroutines/SuspendFunction0<#A>, kotlin.time/Duration = ...): de.pmenke.webkt.util/MutableCachingFlow<#A> // de.pmenke.webkt.util/MutableCachingFlow|MutableCachingFlow(kotlin.coroutines.SuspendFunction0<0:0>;kotlin.time.Duration){0§<kotlin.Any?>}[0]
+final fun de.pmenke.webkt.js_interop/JsObject(kotlin/Array<out kotlin/Pair<kotlin/String, kotlin/Any?>>...): de.pmenke.webkt.js_interop/JsObject // de.pmenke.webkt.js_interop/JsObject|JsObject(kotlin.Array<out|kotlin.Pair<kotlin.String,kotlin.Any?>>...){}[0]
+final fun de.pmenke.webkt.koin_interop/childParameters(de.pmenke.webkt/Component, kotlin/Function0<org.koin.core.parameter/ParametersHolder>?): kotlin/Function0<org.koin.core.parameter/ParametersHolder> // de.pmenke.webkt.koin_interop/childParameters|childParameters(de.pmenke.webkt.Component;kotlin.Function0<org.koin.core.parameter.ParametersHolder>?){}[0]
+final fun de.pmenke.webkt.log/LoggingErrorHandler(de.pmenke.webkt.log/Logger): kotlinx.coroutines/CoroutineExceptionHandler // de.pmenke.webkt.log/LoggingErrorHandler|LoggingErrorHandler(de.pmenke.webkt.log.Logger){}[0]
+final fun de.pmenke.webkt.util/CallbackKey(kotlin/String): de.pmenke.webkt.util/CallbackKey<kotlin/Unit> // de.pmenke.webkt.util/CallbackKey|CallbackKey(kotlin.String){}[0]
+final inline fun <#A: reified de.pmenke.webkt/Component> (de.pmenke.webkt/Component).de.pmenke.webkt.koin_interop/getComponent(noinline kotlin/Function0<org.koin.core.parameter/ParametersHolder>? = ...): #A // de.pmenke.webkt.koin_interop/getComponent|getComponent@de.pmenke.webkt.Component(kotlin.Function0<org.koin.core.parameter.ParametersHolder>?){0§<de.pmenke.webkt.Component>}[0]
+final inline fun <#A: reified de.pmenke.webkt/Component> (de.pmenke.webkt/RenderReceiver).de.pmenke.webkt.koin_interop/getComponent(noinline kotlin/Function0<org.koin.core.parameter/ParametersHolder>? = ...): #A // de.pmenke.webkt.koin_interop/getComponent|getComponent@de.pmenke.webkt.RenderReceiver(kotlin.Function0<org.koin.core.parameter.ParametersHolder>?){0§<de.pmenke.webkt.Component>}[0]
