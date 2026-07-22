@@ -273,9 +273,19 @@ sharing the same page.
 
 ## JWT safety
 
-`JWT.fromString` is a decoder, not a verifier. It does not validate signatures, algorithms, issuers,
-audiences, expiry, or any other trust property. Use a security-reviewed verifier before treating token
-content as authentic. The `audiences` property supports both standards-compliant string and array claims.
+Decode compact tokens with an API whose trust level is visible at the call site:
+
+```kotlin
+val token = UnverifiedJwt.decode(compactJwt)
+val claimedSubject = token.subject
+val encodedThirdSegment = token.signatureSegment
+```
+
+This performs Base64URL, strict UTF-8, and JSON decoding only. `UnverifiedJwt`, `UnverifiedJwtHeader`, and
+`UnverifiedJwtClaims` contain attacker-controlled data: they do not validate signatures, algorithms,
+issuers, audiences, expiry, or any other trust property. Use a security-reviewed verifier before treating
+token content as authentic or making authorization decisions. The `audiences` property supports both the
+standards-compliant string and array representations.
 
 ## Documentation
 
