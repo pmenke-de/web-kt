@@ -13,6 +13,7 @@ import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.core.scope.Scope
+import org.koin.core.scope.ScopeCallback
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLElement
 import kotlin.js.Promise
@@ -20,7 +21,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ComponentTest {
     val coroutineScope = CoroutineScope(Dispatchers.Default)
@@ -152,6 +155,88 @@ class ComponentTest {
         assertNull(first.componentKt)
         assertEquals(component, second.componentKt)
     }
+
+    @Test
+    fun closingOwningKoinScopeClosesTheComponentLifetime(): Promise<JsAny?> = coroutineScope.async {
+        val componentScope = application.koin.createScope<Unit>("component-lifetime-test")
+        var disposeCallbacks = 0
+        var renderScopeClosures = 0
+
+        class AppTest : Component(null, componentScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                scope.registerCallback(object : ScopeCallback {
+                    override fun onScopeClose(scope: Scope) {
+                        renderScopeClosures++
+                    }
+                })
+            }
+
+            fun startWork() = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                awaitCancellation()
+            }
+        }
+
+        val component = AppTest()
+        component.callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { disposeCallbacks++ }
+        document.createTree().run {
+            component.renderTo(this)
+            finalize()
+        }
+        val work = component.startWork()
+
+        componentScope.close()
+        work.join()
+
+        assertTrue(work.isCancelled)
+        assertEquals(1, disposeCallbacks)
+        assertEquals(1, renderScopeClosures)
+        assertNull(component.currentElement)
+    }.asPromise()
+
+    @Test
+    fun disposalContinuesWhenClosingTheRenderScopeFails(): Promise<JsAny?> = coroutineScope.async {
+        val componentScope = application.koin.createScope<Unit>("component-disposal-failure-test")
+        val callbackAfterDisposal = de.pmenke.webkt.util.CallbackKey("after-disposal")
+        var callbackNotifications = 0
+        var updateCount = 0
+        var failRenderScopeClose = true
+
+        class AppTest : Component(null, componentScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                scope.registerCallback(object : ScopeCallback {
+                    override fun onScopeClose(scope: Scope) {
+                        if (failRenderScopeClose) {
+                            failRenderScopeClose = false
+                            error("render scope close failed")
+                        }
+                    }
+                })
+            }
+
+            override fun updateContents() {
+                updateCount++
+                super.updateContents()
+            }
+        }
+
+        val component = AppTest()
+        component.callbacks.subscribe(callbackAfterDisposal) { callbackNotifications++ }
+        val renderedElement = document.createTree().run {
+            component.renderTo(this)
+            finalize()
+        } as HTMLElement
+        component.requestUpdate()
+
+        val failure = assertFailsWith<IllegalStateException> { componentScope.close() }
+        delay(50)
+        component.callbacks.notify(callbackAfterDisposal)
+
+        assertEquals("render scope close failed", failure.message)
+        assertEquals(0, updateCount)
+        assertEquals(0, callbackNotifications)
+        assertNull(renderedElement.componentKt)
+        assertNull(component.currentElement)
+    }.asPromise()
 }
 
 // a test component that generates three different states over time

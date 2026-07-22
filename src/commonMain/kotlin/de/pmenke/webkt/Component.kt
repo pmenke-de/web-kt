@@ -5,12 +5,14 @@ import de.pmenke.webkt.js_interop.JsObject
 import de.pmenke.webkt.js_interop.WeakReference
 import de.pmenke.webkt.koin_interop.ComponentCoroutineScope
 import de.pmenke.webkt.koin_interop.ComponentScope
+import de.pmenke.webkt.lifecycle.Lifetime
 import de.pmenke.webkt.log.Logger
 import de.pmenke.webkt.log.LoggingAspect
 import de.pmenke.webkt.util.*
 import de.pmenke.webkt.util.SequenceUtil.firstInstance
 import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.html.HTMLTag
 import kotlinx.html.TagConsumer
@@ -94,16 +96,23 @@ abstract class Component(
      */
     val id = "$tagName-${IdGenerator.next}"
 
-    // an opaque JsAny, that is only kept alive by this instance.
-    // used to detect garbage-collection of this instance via FinalizationRegistry in [ComponentScope]
+    // An opaque JsAny kept alive only by this instance. Finalization registries use it to close
+    // the render Koin scope and cancel any independently reachable component coroutine job.
     private val finalizationCanary = JsObject()
+
+    /** Internal owner for this component's coroutines and deterministic cleanup. */
+    private val lifetime = Lifetime(
+        Dispatchers.Default,
+        cancellationMessage = "Component '$id' closed",
+        finalizationCanary = finalizationCanary,
+    )
 
     /**
      * A [CoroutineScope] tied to this component's lifecycle.
      *
      * Initialized on first access.
      */
-    protected val coroutineScope by lazy { ComponentCoroutineScope(scope, WeakReference(this)) }
+    protected val coroutineScope by lazy { ComponentCoroutineScope(lifetime, WeakReference(this)) }
 
     /**
      * The parent component of this component.
@@ -147,17 +156,17 @@ abstract class Component(
         LOG.debug { "[$id] component-init in scope ${scope.id} with parent ${parent?.id}" }
         // only take a weak reference to ourselves in the scope-callback, as the scope might outlive us,
         // which would stop garbage collection of this component, if the scope had a strong reference.
-        //
-        // we also want the FinalizationRegistry in ComponentScope to [dispose] this component,
-        // when it gets garbage collected as early as possible.
+        // Finalization handles only cycle-safe fallback work after the component becomes unreachable;
+        // deterministic disposal always follows closure of this owning scope/lifetime.
         val weakThis = WeakReference(this)
         // Note: We cannot unregister the callback in case we get disposed before the scope closes.
         //       This will lead to "empty" (`weakThis` being empty) callbacks being called when the scope finally closes.
         //       It should remain small because the parent normally supplies its short-lived render scope.
         //       Performance-problems could arise, if someone uses a long-lived scope for short-lived many components.
+        lifetime.onClose { weakThis.deref()?.dispose() }
         scope.registerCallback(object : ScopeCallback {
             override fun onScopeClose(scope: Scope) {
-                weakThis.deref()?.dispose()
+                weakThis.deref()?.lifetime?.close()
             }
         })
     }
@@ -263,16 +272,40 @@ abstract class Component(
         if (disposed) return
         disposed = true
         LOG.debug { "[$id] dispose" }
-        callbacks.notifyCatching(LifecycleCallbacks.Dispose) { ex ->
-            LOG.error { "[$id] uncaught exception during dispose callback: ${ex.stackTraceToString()}" }
+
+        val failures = mutableListOf<Throwable>()
+        fun attempt(cleanup: () -> Unit) {
+            try {
+                cleanup()
+            } catch (exception: Throwable) {
+                failures += exception
+            }
         }
-        currentRenderScope?.close()
+
+        attempt {
+            callbacks.notifyCatching(LifecycleCallbacks.Dispose) { ex ->
+                LOG.error { "[$id] uncaught exception during dispose callback: ${ex.stackTraceToString()}" }
+            }
+        }
+
+        val renderScope = currentRenderScope
         currentRenderScope = null
-        animationRequest?.let(window::cancelAnimationFrame)
+        attempt { renderScope?.close() }
+
+        val pendingAnimationRequest = animationRequest
         animationRequest = null
-        element?.componentKt = null
+        attempt { pendingAnimationRequest?.let(window::cancelAnimationFrame) }
+
+        val renderedElement = element
         element = null
-        callbacks.clear()
+        attempt { renderedElement?.componentKt = null }
+
+        attempt { callbacks.clear() }
+
+        failures.firstOrNull()?.let { firstFailure ->
+            failures.drop(1).forEach(firstFailure::addSuppressed)
+            throw firstFailure
+        }
     }
 
     companion object {
