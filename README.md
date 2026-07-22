@@ -12,7 +12,7 @@ but are not part of the library build.
 ## What it provides
 
 - A component tree with deterministic per-render child lifecycles.
-- Inline components that update from `Flow` and `StateFlow` values.
+- Inline components that update from `Flow`, `StateFlow`, and scope-free observable values.
 - Koin-assisted child construction and component-local coroutine scopes.
 - SPA path/hash navigation built on the browser History API.
 - Route matching with path parameters and accumulated tags.
@@ -145,20 +145,38 @@ route. Parameter segments must use a non-empty `{name}` form.
 intercepts only unmodified, primary-button, same-origin links within that base path. Modified clicks,
 downloads, external targets, and links outside the application remain browser-native.
 
-## State helpers
+## Observable values
 
-Import extensions from `StateFlowUtil`:
+`ObservableValue<T>` represents derived UI state that reads synchronously through `value` and can be
+observed lazily through `updates`. Creating or reading one does not launch a coroutine; collection begins
+only when a caller with a suitable lifetime collects `updates`.
 
 ```kotlin
-import de.pmenke.webkt.util.StateFlowUtil.mapState
-import de.pmenke.webkt.util.StateFlowUtil.times
+import de.pmenke.webkt.util.asObservableValue
+import de.pmenke.webkt.util.combineValues
+import de.pmenke.webkt.util.mapValue
 
-val displayName = user.mapState { it.name }
-val combined = firstName * lastName
+val displayName = user.asObservableValue().mapValue { it.name }
+val combined = firstName.asObservableValue().combineValues(
+    lastName.asObservableValue(),
+) { first, last -> "$first $last" }
+
+val currentName = displayName.value
+displayName.updates.onEach(::showName).launchIn(ownerScope)
 ```
 
-The derived flows retain synchronous `StateFlow.value` access. Mapping functions should be pure; they may
-be evaluated independently for direct reads and collectors.
+`mapValue`, `flatMapLatestValue`, fixed-arity `combineValues`, and iterable `combineValues` retain
+synchronous access without `stateIn`. Every update collector receives the current value first and then
+distinct changes. Mapping functions should be pure; they run when the input snapshot changes, while equal
+snapshots reuse the same derived result across direct reads and collectors. `inlineFlowComponent` owns
+collection in its current render lifetime:
+
+```kotlin
+inlineFlowComponent("app-name", displayName) { name -> +name }
+```
+
+The older `StateFlowUtil` mapping and combination helpers remain as deprecated source adapters. They now
+return `ObservableValue`, so use `.updates` when passing their result to ordinary Flow operators.
 
 ## Cached server data
 

@@ -411,24 +411,38 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
         tagName: String,
         flow: StateFlow<T>,
         classes: String = "",
+        renderBlock: RenderReceiver.(T) -> Unit): Component = inlineFlowComponent(
+        tagName = tagName,
+        value = flow.asObservableValue(),
+        classes = classes,
+        renderBlock = renderBlock,
+    )
+
+    /**
+     * Declares an inline child component driven by a scope-free [ObservableValue].
+     *
+     * The current value is rendered synchronously. Collection of [ObservableValue.updates] belongs to this
+     * receiver's render lifetime and is cancelled when that render is replaced. A first update equal to the
+     * synchronously rendered value is skipped; a value that changed before collection began is not lost.
+     */
+    fun <T> inlineFlowComponent(
+        tagName: String,
+        value: ObservableValue<T>,
+        classes: String = "",
         renderBlock: RenderReceiver.(T) -> Unit): Component {
-        var initialValue: Any? = flow.value
+        var currentValue = value.value
+        var initiallyRenderedValue: Any? = currentValue
         var awaitingFirstEmission = true
         val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
-            renderBlock(flow.value)
+            renderBlock(currentValue)
         }
-        // drop the first value, as we already rendered it initially.
-        // just using `drop(1)` can lead to a race-condition, if the flow emits a new value before we subscribe, losing that value.
-        // Compare only the first collected value with the rendered value, then release that value immediately.
-        // This also handles null and does not suppress a later return to the initial object.
-        flow.dropWhile { value ->
-            if (!awaitingFirstEmission) return@dropWhile false
+        value.updates.onEach { update ->
+            val isAlreadyRendered = awaitingFirstEmission && initiallyRenderedValue == update
             awaitingFirstEmission = false
-            val isAlreadyRendered = initialValue === value
-            initialValue = null
-            isAlreadyRendered
+            initiallyRenderedValue = null
+            currentValue = update
+            if (!isAlreadyRendered) component.requestUpdate()
         }
-            .onEach { component.requestUpdate() }
             .launchIn(coroutineScope)
         component.renderTo(this)
         return component

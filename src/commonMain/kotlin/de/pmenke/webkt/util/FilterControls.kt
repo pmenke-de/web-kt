@@ -1,18 +1,14 @@
 package de.pmenke.webkt.util
 
-import de.pmenke.webkt.util.StateFlowUtil.flatMapStateLatest
-import de.pmenke.webkt.util.StateFlowUtil.stateCombine
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
-/** Combines independently configurable [FilterElement]s into one predicate state flow. */
+/** Combines independently configurable [FilterElement]s into one observable predicate. */
 class FilterControls<T> {
     private val filterElements = MutableStateFlow(listOf<FilterElement<T>>())
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val filter: StateFlow<(T)-> Boolean> = filterElements.flatMapStateLatest { elements ->
-        elements.map { it.filter }.stateCombine { filters -> {item: T -> filters.all { it(item) }} }
+    /** The current combined predicate and its lazy update stream. */
+    val filter: ObservableValue<(T) -> Boolean> = filterElements.asObservableValue().flatMapLatestValue { elements ->
+        elements.map { it.filter }.combineValues { filters -> { item: T -> filters.all { it(item) } } }
     }
 
     /** Adds and returns a multi-option filter. */
@@ -34,7 +30,7 @@ class FilterControls<T> {
 /** A stateful predicate that can participate in [FilterControls]. */
 interface FilterElement<T> {
     /** Predicate reflecting the element's current selection. */
-    val filter: StateFlow<(T) -> Boolean>
+    val filter: ObservableValue<(T) -> Boolean>
     /** Whether this element currently has a user-visible selection. */
     val active: Boolean
 }
@@ -45,11 +41,13 @@ class OptionFilterElement<T>(
 ) : FilterElement<T>  {
     val options: List<FilterOption<T>> = options.toList() // copy to ensure consistent size
 
-    override val filter: StateFlow<(T) -> Boolean> = options.map { it.selected }.stateCombine { selected ->
-        val effectiveMatchers = options.filterIndexed { index, _ -> selected[index] }
-        if (effectiveMatchers.isEmpty() || effectiveMatchers.size == options.size) NOP_FILTER
-        else { item: T -> effectiveMatchers.any { matcher -> matcher.matcher(item) } }
-    }
+    override val filter: ObservableValue<(T) -> Boolean> = options
+        .map { it.selected.asObservableValue() }
+        .combineValues { selected ->
+            val effectiveMatchers = options.filterIndexed { index, _ -> selected[index] }
+            if (effectiveMatchers.isEmpty() || effectiveMatchers.size == options.size) NOP_FILTER
+            else { item: T -> effectiveMatchers.any { matcher -> matcher.matcher(item) } }
+        }
 
     override val active: Boolean
         get() = options.any { it.selected.value }

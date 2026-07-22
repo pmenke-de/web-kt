@@ -3,6 +3,8 @@ package de.pmenke.webkt
 import de.pmenke.webkt.util.ComponentUtil.findAncestor
 import de.pmenke.webkt.util.ComponentUtil.isRoot
 import de.pmenke.webkt.util.ComponentUtil.parents
+import de.pmenke.webkt.util.asObservableValue
+import de.pmenke.webkt.util.mapValue
 import kotlinx.browser.document
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -252,6 +254,77 @@ class ComponentTest {
             assertEquals(1, renderCount)
         }.asPromise()
     }
+
+    @Test
+    fun observableValueUsesAndReleasesTheRenderLifetime(): Promise<JsAny?> = coroutineScope.async {
+        val componentScope = application.koin.createScope<Unit>("observable-render-lifetime-test")
+        val source = MutableStateFlow("first")
+        var inlineRenders = 0
+
+        class AppTest : Component(componentScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                inlineFlowComponent("app-observable", source.asObservableValue()) { current ->
+                    inlineRenders++
+                    span { +current }
+                }
+            }
+
+            fun rerender() = updateContents()
+        }
+
+        val component = AppTest()
+        val rendered = document.createTree().run { component.renderTo(this); finalize() }
+        testRoot.append(rendered)
+        delay(30)
+
+        assertEquals(1, inlineRenders, "the current value must not trigger a duplicate initial render")
+        assertEquals(1, source.subscriptionCount.value)
+
+        source.value = "second"
+        delay(50)
+        assertEquals(2, inlineRenders)
+        assertTrue(testRoot.innerHTML.contains("second"))
+
+        component.rerender()
+        delay(30)
+        assertEquals(3, inlineRenders)
+        assertEquals(1, source.subscriptionCount.value, "the replaced render collector must be cancelled")
+
+        componentScope.close()
+        delay(10)
+        assertEquals(0, source.subscriptionCount.value)
+    }.asPromise()
+
+    @Test
+    fun allocatingObservableTransformDoesNotCauseADuplicateInitialRender(): Promise<JsAny?> = coroutineScope.async {
+        val componentScope = application.koin.createScope<Unit>("allocating-observable-render-test")
+        val source = MutableStateFlow(1)
+        val functionValue = source.asObservableValue().mapValue { current -> { current } }
+        var inlineRenders = 0
+
+        class AppTest : Component(componentScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                inlineFlowComponent("app-function", functionValue) { current ->
+                    inlineRenders++
+                    span { +current().toString() }
+                }
+            }
+        }
+
+        val component = AppTest()
+        val rendered = document.createTree().run { component.renderTo(this); finalize() }
+        testRoot.append(rendered)
+        delay(30)
+
+        assertEquals(1, inlineRenders)
+        assertTrue(testRoot.innerHTML.contains(">1<"))
+
+        source.value = 2
+        delay(50)
+        assertEquals(2, inlineRenders)
+        assertTrue(testRoot.innerHTML.contains(">2<"))
+        componentScope.close()
+    }.asPromise()
 
     @Test
     fun renderingAgainReleasesTheOldElementBackReference() {

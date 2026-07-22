@@ -1,221 +1,127 @@
 package de.pmenke.webkt.util
 
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 
-/**
- * Utility functions for [StateFlow]s.
- */
+/** Compatibility extensions for the former StateFlow-specific derived-value API. */
 object StateFlowUtil {
 
-    /**
-     * Convert and launch this flow into a [StateFlow] with an initial value of `null`.
-     *
-     * Shorthand for [stateIn]`(coroutineScope, SharingStarted.Eagerly, null)`.
-     */
+    /** Convert and eagerly launch this flow as nullable state in the caller-owned [coroutineScope]. */
     fun <T> Flow<T>.launchStateIn(coroutineScope: CoroutineScope) =
-        this.stateIn(coroutineScope, SharingStarted.Eagerly, null)
+        stateIn(coroutineScope, SharingStarted.Eagerly, null)
 
     /**
-     * Maps the values of this [StateFlow] using the provided [transform] function,
-     * producing a new [StateFlow] of the transformed values.
+     * Maps this state as a lazy [ObservableValue].
+     *
+     * @see mapValue
      */
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-    fun <T, R> StateFlow<T>.mapState(transform: (T) -> R): StateFlow<R> = object : StateFlow<R> {
-        private var lastInput: T = this@mapState.value
-        private var lastValue: R = transform(this@mapState.value)
+    @Deprecated("Use asObservableValue().mapValue(transform)")
+    fun <T, R> StateFlow<T>.mapState(transform: (T) -> R): ObservableValue<R> =
+        asObservableValue().mapValue(transform)
 
-        override val value: R
-            get() = this@mapState.value.let { currentInput ->
-                if (currentInput == lastInput) lastValue
-                else transform(currentInput).also {
-                    lastInput = currentInput
-                    lastValue = it
-                }
-            }
-
-        override suspend fun collect(collector: FlowCollector<R>): Nothing {
-            coroutineScope {
-                this@mapState.map { transform(it) }.stateIn(this).collect(collector)
-            }
-        }
-
-        override val replayCache: List<R>
-            get() = listOf(value)
-    }
+    /** Maps an already-derived observable value. */
+    @Deprecated("Use mapValue(transform)")
+    fun <T, R> ObservableValue<T>.mapState(transform: (T) -> R): ObservableValue<R> = mapValue(transform)
 
     /**
-     * Maps the values of this [StateFlow] using the provided [transform] function,
-     * which returns another [StateFlow], producing a new [StateFlow] that reflects the
-     * latest values from the most recently emitted inner [StateFlow].
+     * Switches to the state selected by the latest outer state.
+     *
+     * @see flatMapLatestValue
      */
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class, ExperimentalCoroutinesApi::class)
-    fun <T, R> StateFlow<T>.flatMapStateLatest(transform: (T) -> StateFlow<R>): StateFlow<R> = object : StateFlow<R> {
-        private var lastInput = this@flatMapStateLatest.value
-        private var lastSubInput: StateFlow<R> = transform(lastInput)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Deprecated("Use asObservableValue().flatMapLatestValue { it.asObservableValue() }")
+    fun <T, R> StateFlow<T>.flatMapStateLatest(
+        transform: (T) -> StateFlow<R>,
+    ): ObservableValue<R> = asObservableValue().flatMapLatestValue { transform(it).asObservableValue() }
 
-        override val value: R
-            get() = this@flatMapStateLatest.value.let { currentInput ->
-                (if (currentInput == lastInput) lastSubInput
-                else transform(currentInput).also { currentSubInput ->
-                    lastInput = currentInput
-                    lastSubInput = currentSubInput
-                }).value
-            }
+    /** Combines two state flows as a scope-free [ObservableValue]. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    fun <A, B, R> StateFlow<A>.stateCombine(
+        flowB: StateFlow<B>,
+        combiner: (A, B) -> R,
+    ): ObservableValue<R> = asObservableValue().combineValues(flowB.asObservableValue(), combiner)
 
-        override suspend fun collect(collector: FlowCollector<R>): Nothing {
-            coroutineScope {
-                this@flatMapStateLatest.flatMapLatest { transform(it) }.stateIn(this).collect(collector)
-            }
-        }
-
-        override val replayCache: List<R>
-            get() = listOf(value)
-    }
-
-    /**
-     * Combines this state flow with another [StateFlow], producing a new [StateFlow] whose value is derived from the
-     * latest values of both input flows using the provided [combiner] function.
-     * The resulting [StateFlow] updates its value whenever either of the input flows emits a new value.
-     */
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-    fun <A, B, C> StateFlow<A>.stateCombine(flowB: StateFlow<B>, combiner: (A, B) -> C): StateFlow<C> = object : StateFlow<C> {
-        private var lastInputs = this@stateCombine.value to flowB.value
-        private var lastValue = combiner(lastInputs.first, lastInputs.second)
-        // the getter caches the output value of the combiner, so we don't call it unnecessarily often
-        override val value: C get() = (this@stateCombine.value to flowB.value).let { currentInputs ->
-            if (currentInputs != lastInputs) {
-                lastInputs = currentInputs
-                lastValue = combiner(lastInputs.first, lastInputs.second)
-            }
-            lastValue
-        }
-        override suspend fun collect(collector: FlowCollector<C>): Nothing {
-            combine(this@stateCombine, flowB) { a, b -> combiner(a, b) }.collect(collector)
-            throw IllegalStateException("unreachable @stateCombine2#collect")
-        }
-        override val replayCache: List<C>
-            get() = listOf(value)
-    }
-
-    /**
-     * Combines this state flow with two other [StateFlow]s, producing a new [StateFlow] whose value is derived from the
-     * latest values of all three input flows using the provided [combiner] function.
-     * The resulting [StateFlow] updates its value whenever any of the input flows emits a new value.
-     */
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-    fun <A, B, C, D> StateFlow<A>.stateCombine(
+    /** Combines three state flows as a scope-free [ObservableValue]. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    fun <A, B, C, R> StateFlow<A>.stateCombine(
         flowB: StateFlow<B>,
         flowC: StateFlow<C>,
-        combiner: (A, B, C) -> D
-    ): StateFlow<D> = object : StateFlow<D> {
-        private var lastInputs = Triple(this@stateCombine.value, flowB.value, flowC.value)
-        private var lastValue = combiner(lastInputs.first, lastInputs.second, lastInputs.third)
-        override val value: D get() = Triple(this@stateCombine.value, flowB.value, flowC.value).let { currentInputs ->
-            if (currentInputs != lastInputs) {
-                lastInputs = currentInputs
-                lastValue = combiner(lastInputs.first, lastInputs.second, lastInputs.third)
-            }
-            lastValue
-        }
-        override suspend fun collect(collector: FlowCollector<D>): Nothing {
-            combine(this@stateCombine, flowB, flowC) { a, b, c -> combiner(a, b, c) }.collect(collector)
-            throw IllegalStateException("unreachable @stateCombine3#collect")
-        }
-        override val replayCache: List<D>
-            get() = listOf(value)
-    }
+        combiner: (A, B, C) -> R,
+    ): ObservableValue<R> = asObservableValue().combineValues(
+        flowB.asObservableValue(),
+        flowC.asObservableValue(),
+        combiner,
+    )
 
-    /**
-     * Combines this state flow with three other [StateFlow]s, producing a new [StateFlow] whose value is derived from the
-     * latest values of all four input flows using the provided [combiner] function.
-     * The resulting [StateFlow] updates its value whenever any of the input flows emits a new value.
-     */
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-    fun <A, B, C, D, E> StateFlow<A>.stateCombine(
+    /** Combines four state flows as a scope-free [ObservableValue]. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    fun <A, B, C, D, R> StateFlow<A>.stateCombine(
         flowB: StateFlow<B>,
         flowC: StateFlow<C>,
         flowD: StateFlow<D>,
-        combiner: (A, B, C, D) -> E
-    ): StateFlow<E> = object : StateFlow<E> {
-        private var lastInputs = Tuple4(this@stateCombine.value, flowB.value, flowC.value, flowD.value)
-        private var lastValue = combiner(lastInputs.first, lastInputs.second, lastInputs.third, lastInputs.fourth)
-        override val value: E get() = Tuple4(this@stateCombine.value, flowB.value, flowC.value, flowD.value).let { currentInputs ->
-            if (currentInputs != lastInputs) {
-                lastInputs = currentInputs
-                lastValue = combiner(lastInputs.first, lastInputs.second, lastInputs.third, lastInputs.fourth)
-            }
-            lastValue
-        }
-        override suspend fun collect(collector: FlowCollector<E>): Nothing {
-            combine(this@stateCombine, flowB, flowC, flowD) { a, b, c, d -> combiner(a, b, c, d) }.collect(collector)
-            throw IllegalStateException("unreachable @stateCombine4#collect")
-        }
-        override val replayCache: List<E>
-            get() = listOf(value)
+        combiner: (A, B, C, D) -> R,
+    ): ObservableValue<R> = asObservableValue().combineValues(
+        flowB.asObservableValue(),
+        flowC.asObservableValue(),
+        flowD.asObservableValue(),
+        combiner,
+    )
+
+    /** Combines a snapshot of state flows as a scope-free [ObservableValue]. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    fun <T, R> Iterable<StateFlow<T>>.stateCombine(combiner: (List<T>) -> R): ObservableValue<R> =
+        map { it.asObservableValue() }.combineValues(combiner)
+
+    /** Combines two states into a pair while retaining synchronous value access. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    operator fun <A, B> StateFlow<A>.times(other: StateFlow<B>): ObservableValue<Pair<A, B>> =
+        asObservableValue().combineValues(other.asObservableValue()) { a, b -> a to b }
+
+    /** Combines an observable value and a state flow into a pair. */
+    @Deprecated("Use combineValues")
+    operator fun <A, B> ObservableValue<A>.times(other: StateFlow<B>): ObservableValue<Pair<A, B>> =
+        combineValues(other.asObservableValue()) { a, b -> a to b }
+
+    /** Appends a state to an observable pair. */
+    @Deprecated("Use combineValues")
+    operator fun <A, B, C> ObservableValue<Pair<A, B>>.times(other: StateFlow<C>): ObservableValue<Triple<A, B, C>> =
+        combineValues(other.asObservableValue()) { (a, b), c -> Triple(a, b, c) }
+
+    /** Appends a state to an observable triple. */
+    @Deprecated("Use combineValues")
+    operator fun <A, B, C, D> ObservableValue<Triple<A, B, C>>.times(other: StateFlow<D>): ObservableValue<Tuple4<A, B, C, D>> =
+        combineValues(other.asObservableValue()) { (a, b, c), d -> Tuple4(a, b, c, d) }
+
+    /** Appends a state to an observable four-tuple. */
+    @Deprecated("Use combineValues")
+    operator fun <A, B, C, D, E> ObservableValue<Tuple4<A, B, C, D>>.times(
+        other: StateFlow<E>,
+    ): ObservableValue<Tuple5<A, B, C, D, E>> = combineValues(other.asObservableValue()) { (a, b, c, d), e ->
+        Tuple5(a, b, c, d, e)
     }
 
-    @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-    /** Combines an arbitrary number of state flows while retaining synchronous [StateFlow.value] access. */
-    fun <T, R> Iterable<StateFlow<T>>.stateCombine(combiner: (List<T>)->R): StateFlow<R> {
-        val inputFlows = toList()
-        return object : StateFlow<R> {
-            private var lastInputs: List<T> = inputFlows.map { it.value }
-            private var lastValue: R = combiner(lastInputs)
-            override val value: R get() = inputFlows.map { it.value }.let { currentInputs ->
-                if (currentInputs != lastInputs) {
-                    lastInputs = currentInputs
-                    lastValue = combiner(lastInputs)
-                }
-                lastValue
-            }
-            override suspend fun collect(collector: FlowCollector<R>): Nothing {
-                if (inputFlows.isEmpty()) {
-                    // If no inputs exist, emit the current value once and then remain a state flow forever.
-                    collector.emit(value)
-                    suspendCancellableCoroutine<Nothing> { }
-                }
-                // combine wants reified T to construct a typed array.
-                // Array<Any?> is sufficient because values are only exposed again as List<T>.
-                @Suppress("UNCHECKED_CAST")
-                combine<Any?, R>(inputFlows) { items ->
-                    combiner(items.toList() as List<T>)
-                }.collect(collector)
-                throw IllegalStateException("unreachable @stateCombineN#collect")
-            }
-            override val replayCache: List<R>
-                get() = listOf(value)
-        }
+    /** Appends a state to a pair already stored in a state flow. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    operator fun <A, B, C> StateFlow<Pair<A, B>>.times(other: StateFlow<C>): ObservableValue<Triple<A, B, C>> =
+        asObservableValue().combineValues(other.asObservableValue()) { (a, b), c -> Triple(a, b, c) }
+
+    /** Appends a state to a triple already stored in a state flow. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    operator fun <A, B, C, D> StateFlow<Triple<A, B, C>>.times(
+        other: StateFlow<D>,
+    ): ObservableValue<Tuple4<A, B, C, D>> = asObservableValue().combineValues(other.asObservableValue()) { (a, b, c), d ->
+        Tuple4(a, b, c, d)
     }
 
-    /**
-     * Combines this state flow with another [StateFlow], producing a new [StateFlow] whose value is a [Pair] of the
-     * latest values from both input flows.
-     * The resulting [StateFlow] updates its value whenever either of the input flows emits a new value.
-     */
-    operator fun <A, B> StateFlow<A>.times(other: StateFlow<B>): StateFlow<Pair<A, B>> = stateCombine(other) { a, b -> a to b }
-
-    /**
-     * Combines this state flow, which holds a [Pair], with another [StateFlow], producing a new [StateFlow] whose value is a
-     * [Triple] of the values from the input flows.
-     * The resulting [StateFlow] updates its value whenever either of the input flows emits a new value.
-     */
-    operator fun <A, B, C> StateFlow<Pair<A, B>>.times(other: StateFlow<C>): StateFlow<Triple<A, B, C>> =
-        stateCombine(other) { (a, b), c -> Triple(a, b, c) }
-
-    /**
-     * Combines this state flow, which holds a [Triple], with another [StateFlow], producing a new [StateFlow] whose value is a
-     * [Tuple4] of the values from the input flows.
-     * The resulting [StateFlow] updates its value whenever either of the input flows emits a new value.
-     */
-    operator fun <A, B, C, D> StateFlow<Triple<A, B, C>>.times(other: StateFlow<D>): StateFlow<Tuple4<A, B, C, D>> =
-        stateCombine(other) { (a, b, c), d -> Tuple4(a, b, c, d) }
-
-    /**
-     * Combines this state flow, which holds a [Tuple4], with another [StateFlow], producing a new [StateFlow] whose value is a
-     * [Tuple5] of the values from the input flows.
-     * The resulting [StateFlow] updates its value whenever either of the input flows emits a new value.
-     */
-    operator fun <A, B, C, D, E> StateFlow<Tuple4<A, B, C, D>>.times(other: StateFlow<E>): StateFlow<Tuple5<A, B, C, D, E>> =
-        stateCombine(other) { (a, b, c, d), e -> Tuple5(a, b, c, d, e) }
+    /** Appends a state to a four-tuple already stored in a state flow. */
+    @Deprecated("Adapt the inputs with asObservableValue() and use combineValues")
+    operator fun <A, B, C, D, E> StateFlow<Tuple4<A, B, C, D>>.times(
+        other: StateFlow<E>,
+    ): ObservableValue<Tuple5<A, B, C, D, E>> = asObservableValue().combineValues(other.asObservableValue()) { (a, b, c, d), e ->
+        Tuple5(a, b, c, d, e)
+    }
 }

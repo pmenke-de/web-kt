@@ -32,9 +32,9 @@ class SortControls<T> {
     private val comparatorFlow = MutableStateFlow<Comparator<T>>(noneComparator())
 
     /**
-     * A StateFlow that emits the current combined comparator based on the active sort elements and their directions.
+     * The current combined comparator and its lazy update stream.
      */
-    val comparator: StateFlow<Comparator<T>> = comparatorFlow.asStateFlow()
+    val comparator: ObservableValue<Comparator<T>> = comparatorFlow.asObservableValue()
 
     private val sortElements = mutableListOf<SortElementImpl>()
 
@@ -69,7 +69,7 @@ class SortControls<T> {
     ) : SortElement {
         private val directionFlow = MutableStateFlow(SortDirection.NONE)
 
-        override val direction = directionFlow.asStateFlow()
+        override val direction = directionFlow.asObservableValue()
 
         override fun cycle(clearOther: Boolean) {
             set(direction.value.cycle(), clearOther)
@@ -101,7 +101,7 @@ interface SortElement {
      * The current sort direction of this element.
      * Initially [SortDirection.NONE].
      */
-    val direction: StateFlow<SortDirection>
+    val direction: ObservableValue<SortDirection>
 
     /**
      * Cycles the sort direction to the next state (NONE -> ASC -> DESC).
@@ -156,6 +156,6 @@ fun RenderReceiver.sortLink(element: SortElement) {
 
 /** Sorts successful list values using the comparator currently exposed by [sortControls]. */
 fun <T> Flow<Result<List<T>>?>.sortedWith(sortControls: SortControls<T>): Flow<Result<List<T>>?> =
-    combine(sortControls.comparator) { result, comparator ->
+    combine(sortControls.comparator.updates) { result, comparator ->
         result?.map { list -> list.sortedWith(comparator) }
     }
