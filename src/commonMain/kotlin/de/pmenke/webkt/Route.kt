@@ -1,31 +1,17 @@
 package de.pmenke.webkt
 
-import kotlin.apply
-import kotlin.collections.forEach
-import kotlin.collections.isNotEmpty
-import kotlin.collections.plus
-import kotlin.collections.set
-import kotlin.collections.zip
-import kotlin.let
-import kotlin.text.endsWith
-import kotlin.text.split
-import kotlin.text.startsWith
-import kotlin.text.trim
-import kotlin.text.trimStart
-import kotlin.to
-
 /**
  * A simple routing tree, which can match paths with parameters and tags.
  * Built using a DSL from the package-level `route` method.
  *
  * @param T The type of the result produced when a route is selected.
  */
-class Route<T: Any> private constructor(private val routeSegments: List<String>) {
-    constructor(path: String) : this(path.trimStart('/').split('/'))
+class Route<T : Any> private constructor(private val routeSegments: List<String>) {
+    constructor(path: String) : this(path.toRouteSegments())
     internal constructor() : this(emptyList())
     private val children = mutableListOf<Route<T>>()
     private var onSelect: ((params: Map<String, String>, tags: Set<String>) -> T)? = null
-    private var tags = mutableSetOf<String>()
+    private val tags = mutableSetOf<String>()
 
     /**
      * Adds a child route with the given [path] and initializes it using [init].
@@ -66,47 +52,51 @@ class Route<T: Any> private constructor(private val routeSegments: List<String>)
      * If no matching route is found, `null` is returned.
      */
     fun enter(path: String): T? {
-        val segments = path.trimStart('/').split('/')
-        val params = mutableMapOf<String, String>()
-        return enter(segments, params, tags)
+        return enter(path.toRouteSegments(), emptyMap(), tags)
     }
 
-    private fun enter(segments: List<String>, params: MutableMap<String, String>, tags: Set<String>): T? {
-        if (match(segments, params)) {
-            val remainingSegments = segments.subList(routeSegments.size, segments.size)
-            if (remainingSegments.isNotEmpty()) {
-                for (child in children) {
-                    child.enter(remainingSegments, params, tags + child.tags)?.let { return it }
-                }
-                return null
-            } else {
-                return onSelect?.invoke(params, tags)
+    private fun enter(segments: List<String>, inheritedParams: Map<String, String>, tags: Set<String>): T? {
+        val matchedParams = match(segments) ?: return null
+        val params = inheritedParams + matchedParams
+        val remainingSegments = segments.drop(routeSegments.size)
+
+        if (remainingSegments.isNotEmpty()) {
+            for (child in children) {
+                child.enter(remainingSegments, params, tags + child.tags)?.let { return it }
             }
-        } else {
             return null
         }
+
+        return onSelect?.invoke(params, tags)
     }
 
-    private fun match(pathSegments: List<String>, params: MutableMap<String, String>): Boolean {
-        if (pathSegments.size < routeSegments.size) return false
-        val newParams = mutableListOf<Pair<String, String>>()
+    private fun match(pathSegments: List<String>): Map<String, String>? {
+        if (pathSegments.size < routeSegments.size) return null
+        val params = mutableMapOf<String, String>()
         for ((pathSegment, routeSegment) in pathSegments.zip(routeSegments)) {
             when {
-                routeSegment.startsWith("{") && routeSegment.endsWith("}") -> {
-                    val paramName = routeSegment.trim('{', '}')
-                    newParams.add(paramName to pathSegment)
+                routeSegment.isParameter() -> {
+                    params[routeSegment.substring(1, routeSegment.lastIndex)] = pathSegment
                 }
-                routeSegment != pathSegment -> return false
+                routeSegment != pathSegment -> return null
             }
         }
-        newParams.forEach { (name, value) -> params[name] = value }
-        return true
+        return params
     }
 }
 
 /**
  * Creates a root [Route] and initializes it using [init].
  */
-fun <T: Any> route(init: Route<T>.() -> Unit): Route<T> {
+fun <T : Any> route(init: Route<T>.() -> Unit): Route<T> {
     return Route<T>().apply(init)
 }
+
+private fun String.toRouteSegments(): List<String> = trimStart('/').split('/').also { segments ->
+    segments.filter { it.startsWith('{') || it.endsWith('}') }.forEach { segment ->
+        require(segment.isParameter()) { "Invalid route parameter segment '$segment'" }
+    }
+}
+
+private fun String.isParameter(): Boolean =
+    length > 2 && startsWith('{') && endsWith('}') && substring(1, lastIndex).none { it == '{' || it == '}' }
