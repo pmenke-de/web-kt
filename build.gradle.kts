@@ -90,6 +90,9 @@ publishing {
                 developer {
                     id.set("pmenke")
                     name.set("Philipp Menke")
+                    email.set("philipp.menke@global-office.de")
+                    organization.set("pmenke-de")
+                    organizationUrl.set("https://github.com/pmenke-de")
                 }
             }
             scm {
