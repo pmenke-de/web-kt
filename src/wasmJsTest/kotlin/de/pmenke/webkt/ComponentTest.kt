@@ -1,5 +1,7 @@
 package de.pmenke.webkt
 
+import de.pmenke.webkt.koin_interop.KoinComponentEnvironment
+import de.pmenke.webkt.koin_interop.koinScope
 import de.pmenke.webkt.util.ComponentUtil.findAncestor
 import de.pmenke.webkt.util.ComponentUtil.isRoot
 import de.pmenke.webkt.util.ComponentUtil.parents
@@ -35,14 +37,12 @@ import kotlin.test.assertTrue
 class ComponentTest {
     val coroutineScope = CoroutineScope(Dispatchers.Default)
     lateinit var application: KoinApplication
-    lateinit var rootScope: Scope
     lateinit var testRoot: Element
 
     @BeforeTest
     fun setup() {
         ComponentRenderHooks.reset()
         application = startKoin { }
-        rootScope = application.koin.getOrCreateScope<Unit>("_root_")
         // Create a root element for testing
         document.getElementById("test-root")?.remove()
         testRoot = document.createTree().run {
@@ -62,7 +62,7 @@ class ComponentTest {
 
     @Test
     fun testFlowUpdate(): Promise<JsAny?> {
-        val comp = FlowUpdateTestComponent(rootScope)
+        val comp = constructComponent { FlowUpdateTestComponent() }
         val compElement = document.createTree().run {
             comp.renderTo(this)
             finalize()
@@ -86,7 +86,7 @@ class ComponentTest {
     @Test
     fun testNestedInline() {
         var asserted = false
-        class AppTest : Component(null, rootScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 inlineFlowComponent("app-foo", MutableStateFlow("foo")) {
                     val appFooComponent = component
@@ -99,7 +99,7 @@ class ComponentTest {
             }
         }
         document.createTree().run {
-            AppTest().renderTo(this)
+            constructComponent { AppTest() }.renderTo(this)
             finalize()
         }
         assertEquals(true, asserted)
@@ -109,17 +109,17 @@ class ComponentTest {
     fun rootParentageAndAncestorTraversalAreTruthful() {
         lateinit var child: Component
         lateinit var grandchild: Component
-        class AppTest : Component(rootScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
-                child = InlineComponent(this@AppTest, scope, "app-child", emptyMap()) {
-                    grandchild = InlineComponent(component, scope, "app-grandchild", emptyMap()) {}
+                child = InlineComponent(this@AppTest, "app-child", emptyMap()) {
+                    grandchild = InlineComponent(component, "app-grandchild", emptyMap()) {}
                     grandchild.renderTo(this)
                 }
                 child.renderTo(this)
             }
         }
 
-        val root = AppTest()
+        val root = constructComponent { AppTest() }
         document.createTree().run { root.renderTo(this); finalize() }
 
         assertNull(root.parent)
@@ -134,7 +134,7 @@ class ComponentTest {
         var childDisposals = 0
         lateinit var renderWork: Job
 
-        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+        class Child(parent: Component) : Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
             }
@@ -142,16 +142,16 @@ class ComponentTest {
             override fun RenderReceiver.renderContents() = Unit
         }
 
-        class AppTest : Component(rootScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 renderWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-                Child(this@AppTest, scope).renderTo(this)
+                Child(this@AppTest).renderTo(this)
             }
 
             fun rerender() = updateContents()
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         document.createTree().run { component.renderTo(this); finalize() }
         val firstRenderWork = renderWork
 
@@ -171,7 +171,7 @@ class ComponentTest {
         var renderWork: Job? = null
         var childDisposals = 0
 
-        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+        class Child(parent: Component) : Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
             }
@@ -179,17 +179,17 @@ class ComponentTest {
             override fun RenderReceiver.renderContents() = Unit
         }
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(KoinComponentEnvironment(componentScope), "app-test") {
             override fun RenderReceiver.renderContents() {
-                renderScope = scope
+                renderScope = koinScope()
                 renderWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-                Child(this@AppTest, scope).renderTo(this)
+                Child(this@AppTest).renderTo(this)
             }
 
             fun rerender() = updateContents()
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         document.createTree().run { component.renderTo(this); finalize() }
         val firstRenderWork = requireNotNull(renderWork)
 
@@ -216,7 +216,7 @@ class ComponentTest {
     fun testInlineFlowRenderCount(): Promise<JsAny?> {
         var renderCountA = 0
         var renderCountB = 0
-        class AppTest : Component(null, rootScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 inlineFlowComponent("app-foo", MutableStateFlow("foo")) {
                     renderCountA++
@@ -227,7 +227,7 @@ class ComponentTest {
             }
         }
         document.createTree().run {
-            AppTest().renderTo(this)
+            constructComponent { AppTest() }.renderTo(this)
             finalize()
         }
         return coroutineScope.async {
@@ -240,7 +240,7 @@ class ComponentTest {
     @Test
     fun nullableStateFlowRendersOnlyOnceInitially(): Promise<JsAny?> {
         var renderCount = 0
-        class AppTest : Component(null, rootScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 inlineFlowComponent("app-null", MutableStateFlow<String?>(null)) {
                     renderCount++
@@ -249,7 +249,7 @@ class ComponentTest {
         }
 
         document.createTree().run {
-            AppTest().renderTo(this)
+            constructComponent { AppTest() }.renderTo(this)
             finalize()
         }
 
@@ -261,11 +261,10 @@ class ComponentTest {
 
     @Test
     fun observableValueUsesAndReleasesTheRenderLifetime(): Promise<JsAny?> = coroutineScope.async {
-        val componentScope = application.koin.createScope<Unit>("observable-render-lifetime-test")
         val source = MutableStateFlow("first")
         var inlineRenders = 0
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 inlineFlowComponent("app-observable", source.asObservableValue()) { current ->
                     inlineRenders++
@@ -276,7 +275,7 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         testRoot.append(rendered)
         delay(30)
@@ -294,19 +293,18 @@ class ComponentTest {
         assertEquals(3, inlineRenders)
         assertEquals(1, source.subscriptionCount.value, "the replaced render collector must be cancelled")
 
-        componentScope.close()
+        component.close()
         delay(10)
         assertEquals(0, source.subscriptionCount.value)
     }.asPromise()
 
     @Test
     fun allocatingObservableTransformDoesNotCauseADuplicateInitialRender(): Promise<JsAny?> = coroutineScope.async {
-        val componentScope = application.koin.createScope<Unit>("allocating-observable-render-test")
         val source = MutableStateFlow(1)
         val functionValue = source.asObservableValue().mapValue { current -> { current } }
         var inlineRenders = 0
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 inlineFlowComponent("app-function", functionValue) { current ->
                     inlineRenders++
@@ -315,7 +313,7 @@ class ComponentTest {
             }
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         testRoot.append(rendered)
         delay(30)
@@ -327,18 +325,17 @@ class ComponentTest {
         delay(50)
         assertEquals(2, inlineRenders)
         assertTrue(testRoot.innerHTML.contains(">2<"))
-        componentScope.close()
+        component.close()
     }.asPromise()
 
     @Test
     fun failedInitialRenderClosesPartialLifetimeAndThrowsSynchronously(): Promise<JsAny?> = coroutineScope.async {
-        val componentScope = application.koin.createScope<Unit>("failed-initial-render-test")
         var childDisposals = 0
         var childAfterRenders = 0
         var afterRenders = 0
         lateinit var attemptedWork: Job
 
-        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+        class Child(parent: Component) : Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) { childAfterRenders++ }
@@ -347,15 +344,15 @@ class ComponentTest {
             override fun RenderReceiver.renderContents() = Unit
         }
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 attemptedWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-                render(Child(this@AppTest, scope))
+                render(Child(this@AppTest))
                 error("initial render failed")
             }
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         component.callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) { afterRenders++ }
         val failure = assertFailsWith<IllegalStateException> {
             document.createTree().run { component.renderTo(this); finalize() }
@@ -372,7 +369,6 @@ class ComponentTest {
 
     @Test
     fun failedUpdateKeepsLastDomAndLifetimeAndClosesOnlyTheAttempt(): Promise<JsAny?> = coroutineScope.async {
-        val componentScope = application.koin.createScope<Unit>("failed-update-rollback-test")
         val renderWork = mutableListOf<Job>()
         var childDisposals = 0
         var childAfterRenders = 0
@@ -381,7 +377,7 @@ class ComponentTest {
         var stableChildElement: HTMLElement? = null
         var attemptedChildElement: HTMLElement? = null
 
-        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+        class Child(parent: Component) : Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) { childAfterRenders++ }
@@ -392,10 +388,10 @@ class ComponentTest {
             }
         }
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 renderWork += coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-                val child = Child(this@AppTest, scope)
+                val child = Child(this@AppTest)
                 render(child)
                 if (fail) attemptedChildElement = child.currentElement else stableChildElement = child.currentElement
                 if (fail) error("update failed")
@@ -404,7 +400,7 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         component.callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) { afterRenders++ }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         testRoot.append(rendered)
@@ -425,20 +421,19 @@ class ComponentTest {
         assertNull(assertNotNull(attemptedChildElement).componentKt)
         assertNotNull(assertNotNull(stableChildElement).componentKt)
         assertEquals(component, (rendered as HTMLElement).componentKt)
-        componentScope.close()
+        component.close()
         stableWork.join()
     }.asPromise()
 
     @Test
     fun successfulUpdateSwapsDomBeforeDisposingOldRenderAndNotifying(): Promise<JsAny?> = coroutineScope.async {
-        val componentScope = application.koin.createScope<Unit>("successful-render-commit-test")
         val events = mutableListOf<String>()
         var value = "old"
         lateinit var component: Component
         var oldChildElement: HTMLElement? = null
 
-        class Child(parent: Component, scope: Scope, private val renderedValue: String) :
-            Component(parent, scope, "app-child") {
+        class Child(parent: Component, private val renderedValue: String) :
+            Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) {
                     events += "dispose:${component.currentElement?.innerHTML}"
@@ -450,9 +445,9 @@ class ComponentTest {
             }
         }
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
-                val child = Child(this@AppTest, scope, value)
+                val child = Child(this@AppTest, value)
                 render(child)
                 if (value == "old") oldChildElement = child.currentElement
             }
@@ -460,7 +455,7 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        component = AppTest()
+        component = constructComponent { AppTest() }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         testRoot.append(rendered)
         component.callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) { events += "after" }
@@ -472,7 +467,7 @@ class ComponentTest {
         assertEquals(listOf("dispose:<app-child><span>new</span></app-child>", "after"), events)
         assertNull(assertNotNull(oldChildElement).componentKt)
         assertNotNull((rendered.firstChild as HTMLElement).componentKt)
-        componentScope.close()
+        component.close()
     }.asPromise()
 
     @Test
@@ -482,8 +477,8 @@ class ComponentTest {
         var version = 1
         var failOldClose = true
 
-        class Child(parent: Component, scope: Scope, private val childVersion: Int) :
-            Component(parent, scope, "app-child") {
+        class Child(parent: Component, private val childVersion: Int) :
+            Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) {
                     if (childVersion == 2) {
@@ -498,10 +493,10 @@ class ComponentTest {
             }
         }
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(KoinComponentEnvironment(componentScope), "app-test") {
             override fun RenderReceiver.renderContents() {
                 if (version == 1) {
-                    scope.registerCallback(object : ScopeCallback {
+                    koinScope().registerCallback(object : ScopeCallback {
                         override fun onScopeClose(scope: Scope) {
                             if (failOldClose) {
                                 failOldClose = false
@@ -511,13 +506,13 @@ class ComponentTest {
                         }
                     })
                 }
-                render(Child(this@AppTest, scope, version))
+                render(Child(this@AppTest, version))
             }
 
             fun rerender() = updateContents()
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         testRoot.append(rendered)
         component.callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) {
@@ -535,13 +530,12 @@ class ComponentTest {
 
     @Test
     fun nativeReplacementFailureDiscardsPreparedUpdate(): Promise<JsAny?> = coroutineScope.async {
-        val componentScope = application.koin.createScope<Unit>("native-replacement-failure-test")
         var value = "stable"
         val work = mutableListOf<Job>()
         var childDisposals = 0
         var attemptedChildElement: HTMLElement? = null
 
-        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+        class Child(parent: Component) : Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
             }
@@ -551,10 +545,10 @@ class ComponentTest {
             }
         }
 
-        class AppTest : Component(componentScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
                 work += coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-                val child = Child(this@AppTest, scope)
+                val child = Child(this@AppTest)
                 render(child)
                 if (value == "candidate") attemptedChildElement = child.currentElement
             }
@@ -562,7 +556,7 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         testRoot.append(rendered)
         val stableHtml = rendered.innerHTML
@@ -583,7 +577,7 @@ class ComponentTest {
         assertTrue(work.last().isCancelled)
         assertEquals(1, childDisposals)
         assertNull(assertNotNull(attemptedChildElement).componentKt)
-        componentScope.close()
+        component.close()
         stableWork.join()
     }.asPromise()
 
@@ -592,7 +586,7 @@ class ComponentTest {
         var childDisposals = 0
         var candidateChildElement: HTMLElement? = null
 
-        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+        class Child(parent: Component) : Component(parent, "app-child") {
             init {
                 callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
             }
@@ -600,15 +594,15 @@ class ComponentTest {
             override fun RenderReceiver.renderContents() = Unit
         }
 
-        class AppTest : Component(rootScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() {
-                val child = Child(this@AppTest, scope)
+                val child = Child(this@AppTest)
                 render(child)
                 candidateChildElement = child.currentElement
             }
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         val materializeRoot = ComponentRenderHooks.materializeRoot
         ComponentRenderHooks.materializeRoot = { candidateTag, consumer, attributes ->
             if (candidateTag == "app-test") error("root materialization failed")
@@ -630,20 +624,18 @@ class ComponentTest {
 
     @Test
     fun unhandledFallbackRestoresTentativePersistentDescendantState() {
-        val parentScope = application.koin.createScope<Unit>("fallback-parent-test")
-        val childScope = application.koin.createScope<Unit>("fallback-persistent-child-test")
         var fail = false
         var childValue = "stable"
         var fallbackCandidate: HTMLElement? = null
 
-        class PersistentChild(parent: Component) : Component(parent, childScope, "app-persistent") {
+        class PersistentChild(parent: Component) : Component(parent, "app-persistent") {
             override fun RenderReceiver.renderContents() {
                 span { +childValue }
             }
         }
 
         lateinit var persistentChild: PersistentChild
-        class Boundary : Component(parentScope, "app-boundary") {
+        class Boundary : Component(ComponentEnvironment.Empty, "app-boundary") {
             override fun RenderReceiver.renderContents() {
                 if (fail) error("update failed")
                 render(persistentChild)
@@ -658,8 +650,8 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val component = Boundary()
-        persistentChild = PersistentChild(component)
+        val component = constructComponent { Boundary() }
+        persistentChild = constructComponent { PersistentChild(component) }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         testRoot.append(rendered)
         val stableChildElement = assertNotNull(persistentChild.currentElement)
@@ -677,19 +669,19 @@ class ComponentTest {
     }
 
     @Test
-    fun scopeClosureDuringRenderDiscardsInitialAndUpdateAttempts(): Promise<JsAny?> = coroutineScope.async {
-        val initialScope = application.koin.createScope<Unit>("close-during-initial-render-test")
+    fun componentClosureDuringRenderDiscardsInitialAndUpdateAttempts(): Promise<JsAny?> = coroutineScope.async {
         lateinit var initialWork: Job
+        lateinit var initial: Component
 
-        class InitialClose : Component(initialScope, "app-initial-close") {
+        class InitialClose : Component(ComponentEnvironment.Empty, "app-initial-close") {
             override fun RenderReceiver.renderContents() {
                 initialWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-                initialScope.close()
+                initial.close()
                 span { +"candidate" }
             }
         }
 
-        val initial = InitialClose()
+        initial = constructComponent { InitialClose() }
         val initialFailure = assertFailsWith<IllegalStateException> {
             document.createTree().run { initial.renderTo(this); finalize() }
         }
@@ -698,14 +690,13 @@ class ComponentTest {
         assertTrue(initialWork.isCancelled)
         assertNull(initial.currentElement)
 
-        val updateScope = application.koin.createScope<Unit>("close-during-update-render-test")
         var closeDuringRender = false
         lateinit var updateWork: Job
-        class UpdateClose : Component(updateScope, "app-update-close") {
+        class UpdateClose : Component(ComponentEnvironment.Empty, "app-update-close") {
             override fun RenderReceiver.renderContents() {
                 if (closeDuringRender) {
                     updateWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
-                    updateScope.close()
+                    this@UpdateClose.close()
                     span { +"candidate" }
                 } else {
                     span { +"stable" }
@@ -715,7 +706,7 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val update = UpdateClose()
+        val update = constructComponent { UpdateClose() }
         val rendered = document.createTree().run { update.renderTo(this); finalize() } as HTMLElement
         testRoot.append(rendered)
         val stableHtml = rendered.innerHTML
@@ -731,20 +722,19 @@ class ComponentTest {
     }.asPromise()
 
     @Test
-    fun scopeClosureInsideDomCommitHooksDiscardsCandidateLifetimes(): Promise<JsAny?> = coroutineScope.async {
-        val initialScope = application.koin.createScope<Unit>("close-in-materialize-hook-test")
+    fun componentClosureInsideDomCommitHooksDiscardsCandidateLifetimes(): Promise<JsAny?> = coroutineScope.async {
         lateinit var initialWork: Job
-        class InitialHookClose : Component(initialScope, "app-initial-hook-close") {
+        class InitialHookClose : Component(ComponentEnvironment.Empty, "app-initial-hook-close") {
             override fun RenderReceiver.renderContents() {
                 initialWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
                 span { +"candidate" }
             }
         }
 
-        val initial = InitialHookClose()
+        val initial = constructComponent { InitialHookClose() }
         val materializeRoot = ComponentRenderHooks.materializeRoot
         ComponentRenderHooks.materializeRoot = { tagName, consumer, attributes ->
-            initialScope.close()
+            initial.close()
             materializeRoot(tagName, consumer, attributes)
         }
         val initialFailure = try {
@@ -760,10 +750,9 @@ class ComponentTest {
         assertTrue(initialWork.isCancelled)
         assertNull(initial.currentElement)
 
-        val updateScope = application.koin.createScope<Unit>("close-in-replace-hook-test")
         var updating = false
         lateinit var updateWork: Job
-        class UpdateHookClose : Component(updateScope, "app-update-hook-close") {
+        class UpdateHookClose : Component(ComponentEnvironment.Empty, "app-update-hook-close") {
             override fun RenderReceiver.renderContents() {
                 if (updating) {
                     updateWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
@@ -776,13 +765,13 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val update = UpdateHookClose()
+        val update = constructComponent { UpdateHookClose() }
         val rendered = document.createTree().run { update.renderTo(this); finalize() } as HTMLElement
         testRoot.append(rendered)
         updating = true
         val replaceChildren = ComponentRenderHooks.replaceChildren
         ComponentRenderHooks.replaceChildren = { element, replacement ->
-            updateScope.close()
+            update.close()
             replaceChildren(element, replacement)
         }
         val updateFailure = try {
@@ -803,16 +792,16 @@ class ComponentTest {
         var afterRenders = 0
         var fail = false
 
-        class BrokenChild(parent: Component, scope: Scope) : Component(parent, scope, "app-broken") {
+        class BrokenChild(parent: Component) : Component(parent, "app-broken") {
             override fun RenderReceiver.renderContents() {
                 span { +(if (fail) "partial" else "stable") }
                 if (fail) error("descendant failed")
             }
         }
 
-        class Boundary : Component(rootScope, "app-boundary") {
+        class Boundary : Component(ComponentEnvironment.Empty, "app-boundary") {
             override fun RenderReceiver.renderContents() {
-                render(BrokenChild(this@Boundary, scope))
+                render(BrokenChild(this@Boundary))
             }
 
             override fun RenderReceiver.renderFailure(exception: Throwable): Boolean {
@@ -824,7 +813,7 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val component = Boundary()
+        val component = constructComponent { Boundary() }
         component.callbacks.subscribe(Component.Companion.LifecycleCallbacks.AfterRender) { afterRenders++ }
         val rendered = document.createTree().run { component.renderTo(this); finalize() }
         fail = true
@@ -839,7 +828,7 @@ class ComponentTest {
         var boundaryCalls = 0
         lateinit var attemptedWork: Job
 
-        class Boundary : Component(rootScope, "app-boundary") {
+        class Boundary : Component(ComponentEnvironment.Empty, "app-boundary") {
             override fun RenderReceiver.renderContents() {
                 attemptedWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
                 error("initial failure")
@@ -852,7 +841,7 @@ class ComponentTest {
             }
         }
 
-        val component = Boundary()
+        val component = constructComponent { Boundary() }
         val failure = assertFailsWith<IllegalStateException> {
             document.createTree().run { component.renderTo(this); finalize() }
         }
@@ -866,11 +855,10 @@ class ComponentTest {
 
     @Test
     fun failedBoundaryFallbackIsCleanedAndSurfacesBothFailures(): Promise<JsAny?> = coroutineScope.async {
-        val componentScope = application.koin.createScope<Unit>("failed-boundary-test")
         lateinit var fallbackWork: Job
         var fail = false
 
-        class Boundary : Component(componentScope, "app-boundary") {
+        class Boundary : Component(ComponentEnvironment.Empty, "app-boundary") {
             override fun RenderReceiver.renderContents() {
                 if (fail) error("render failed")
                 span { +"stable" }
@@ -884,7 +872,7 @@ class ComponentTest {
             fun rerender() = updateContents()
         }
 
-        val component = Boundary()
+        val component = constructComponent { Boundary() }
         document.createTree().run { component.renderTo(this); finalize() }
         fail = true
         val failure = assertFailsWith<IllegalStateException> {
@@ -899,10 +887,10 @@ class ComponentTest {
 
     @Test
     fun renderingAgainReleasesTheOldElementBackReference() {
-        class AppTest : Component(null, rootScope, "app-test") {
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
             override fun RenderReceiver.renderContents() = Unit
         }
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         val first = document.createTree().run { component.renderTo(this); finalize() } as HTMLElement
         val second = document.createTree().run { component.renderTo(this); finalize() } as HTMLElement
 
@@ -916,9 +904,9 @@ class ComponentTest {
         var disposeCallbacks = 0
         var renderScopeClosures = 0
 
-        class AppTest : Component(null, componentScope, "app-test") {
+        class AppTest : Component(KoinComponentEnvironment(componentScope), "app-test") {
             override fun RenderReceiver.renderContents() {
-                scope.registerCallback(object : ScopeCallback {
+                koinScope().registerCallback(object : ScopeCallback {
                     override fun onScopeClose(scope: Scope) {
                         renderScopeClosures++
                     }
@@ -930,7 +918,7 @@ class ComponentTest {
             }
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         component.callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { disposeCallbacks++ }
         document.createTree().run {
             component.renderTo(this)
@@ -955,9 +943,9 @@ class ComponentTest {
         var updateCount = 0
         var failRenderScopeClose = true
 
-        class AppTest : Component(null, componentScope, "app-test") {
+        class AppTest : Component(KoinComponentEnvironment(componentScope), "app-test") {
             override fun RenderReceiver.renderContents() {
-                scope.registerCallback(object : ScopeCallback {
+                koinScope().registerCallback(object : ScopeCallback {
                     override fun onScopeClose(scope: Scope) {
                         if (failRenderScopeClose) {
                             failRenderScopeClose = false
@@ -973,7 +961,7 @@ class ComponentTest {
             }
         }
 
-        val component = AppTest()
+        val component = constructComponent { AppTest() }
         component.callbacks.subscribe(callbackAfterDisposal) { callbackNotifications++ }
         val renderedElement = document.createTree().run {
             component.renderTo(this)
@@ -995,7 +983,7 @@ class ComponentTest {
 
 // a test component that generates three different states over time
 // initially "0", after 100ms "1", after 200ms "2"
-class FlowUpdateTestComponent(scope: Scope) : Component(null, scope, "app-test") {
+class FlowUpdateTestComponent : Component(ComponentEnvironment.Empty, "app-test") {
 
     override fun RenderReceiver.renderContents() {
         val timedFlow = flow {

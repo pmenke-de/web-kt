@@ -295,6 +295,49 @@ class ComponentEnvironmentTest {
     }
 
     @Test
+    fun koinOwnerClosureBeforeRootAttachmentRejectsAndCleansTheInitialMount() {
+        val application = koinApplication { }
+        val rootScope = application.koin.createScope<Unit>("closing-before-root-attachment")
+        lateinit var renderWork: Job
+        var disposals = 0
+
+        class Root : Component(KoinComponentEnvironment(rootScope), "app-root") {
+            init {
+                callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { disposals++ }
+            }
+
+            override fun RenderReceiver.renderContents() {
+                renderWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
+            }
+        }
+
+        val root = constructComponent { Root() }
+        val materializeRoot = ComponentRenderHooks.materializeRoot
+        ComponentRenderHooks.materializeRoot = { tagName, consumer, attributes ->
+            rootScope.close()
+            materializeRoot(tagName, consumer, attributes)
+        }
+
+        val failure = try {
+            assertFailsWith<IllegalStateException> {
+                document.createTree().run { root.renderTo(this); finalize() }
+            }
+        } finally {
+            ComponentRenderHooks.reset()
+        }
+
+        assertEquals("Component '${root.id}' was closed while attaching its root environment", failure.message)
+        assertTrue(renderWork.isCancelled)
+        assertEquals(1, disposals)
+        assertEquals(null, root.currentElement)
+
+        val retryFailure = assertFailsWith<IllegalStateException> {
+            document.createTree().run { root.renderTo(this); finalize() }
+        }
+        assertEquals("Component '${root.id}' cannot be rendered after its lifecycle was closed", retryFailure.message)
+    }
+
+    @Test
     fun failedKoinRenderScopeConstructionClosesTheCreatedScope() {
         val application = koinApplication { }
         val rootScope = application.koin.createScope<Unit>("rollback-root")

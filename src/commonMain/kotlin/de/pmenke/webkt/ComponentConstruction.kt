@@ -3,8 +3,8 @@ package de.pmenke.webkt
 /**
  * Constructs a component with rollback for resources created before a subclass constructor fails.
  *
- * Rendering and Koin resolution establish this boundary automatically. Every direct new-model
- * component construction must use this function; constructors enforce that requirement so
+ * Rendering and environment-adapter resolution establish this boundary automatically. Every direct
+ * component construction must use this function; component constructors enforce that requirement so
  * rollback cannot be bypassed accidentally. A returned child and children constructed during a
  * returned component's initializer become persistent children owned by their parents.
  */

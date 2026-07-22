@@ -17,12 +17,21 @@ import org.koin.core.scope.ScopeCallback
  */
 class KoinComponentEnvironment(val scope: Scope) : ComponentEnvironment {
     override fun attachComponent(component: Component, lifetime: ResourceLifetime) {
+        if (scope.closed) {
+            lifetime.close()
+            return
+        }
+
         val lifetimeRef = WeakReference(lifetime)
         scope.registerCallback(object : ScopeCallback {
             override fun onScopeClose(scope: Scope) {
                 lifetimeRef.deref()?.close()
             }
         })
+
+        // Koin does not invoke callbacks registered after closure. Re-check defensively at the
+        // registration boundary; Lifetime.close is idempotent if the callback already observed it.
+        if (scope.closed) lifetime.close()
     }
 
     override fun createRenderEnvironment(

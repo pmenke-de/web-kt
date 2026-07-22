@@ -14,7 +14,6 @@ interface ComponentEnvironment {
     /**
      * Attaches integration-specific ownership to a successfully mounted root [component].
      *
-     * Legacy scope constructors also call this during construction for source-compatible ownership.
      * Implementations may arrange for an external owner to close [lifetime]. They must not retain
      * [component] more strongly or longer than that owner requires.
      */
@@ -31,7 +30,7 @@ interface ComponentEnvironment {
 }
 
 /**
- * Koin-free lifetime contract offered to component-environment integrations.
+ * DI-framework-neutral lifetime contract offered to component-environment integrations.
  *
  * The lifetime owns its coroutine job. Closing it cancels that job before executing registered
  * cleanup actions in reverse registration order.

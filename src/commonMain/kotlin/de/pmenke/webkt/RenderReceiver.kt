@@ -10,27 +10,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.html.TagConsumer
-import org.koin.core.component.KoinScopeComponent
-import org.koin.core.parameter.ParametersDefinition
-import org.koin.core.parameter.parametersOf
-import org.koin.core.scope.Scope
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLElement
 
 @ComponentDSL
-interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
+interface RenderReceiver : TagConsumer<Element> {
     /** DI-neutral integration resource owned by the current render attempt. */
     val environment: RenderEnvironment
-
-    /**
-     * The current rendering [Scope] for this component.
-     * A new scope is created for each rendering of the component, so that
-     * resources and coroutines, created by child-components during rendering,
-     * will be closed / cancelled, when the component is re-rendered.
-     *
-     * This is the Koin compatibility view of the current render lifetime.
-     */
-    override val scope: Scope
 
     /**
      * Reference to the current rendering [Component].
@@ -41,8 +27,8 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
 
     /**
      * The [CoroutineScope] owned by the current render lifetime.
-     * This coroutine scope is tied to the current rendering [scope], so that
-     * coroutines launched in this scope will be cancelled, when the component is re-rendered.
+     * This coroutine scope is tied to the current render lifetime, so coroutines launched in it
+     * are cancelled when the component is re-rendered.
      *
      * Primarily used in [inlineFlowComponent]s, to launch collectors for the given [Flow]s,
      * as they should be cancelled, when the component is re-rendered and the old inline-components are disposed.
@@ -58,7 +44,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
      * Declare and render an inline child-component, that is based on a [Flow] of values.
      * The component will be re-rendered, whenever the flow emits a new value.
      *
-     * The component inherits the current [coroutineScope] and [renderingScope][scope].
+     * The component inherits the current [coroutineScope] and render environment.
      *
      * @param tagName The HTML tag name to use for the inline component's root element in the DOM.
      * @param flow The [Flow] of values to base the inline component on.
@@ -89,7 +75,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
      * Declare and render an inline child-component, that is based on a [Flow] of values.
      * The component will be re-rendered, whenever the flow emits a new value.
      *
-     * The component inherits the current [coroutineScope] and [renderingScope][scope].
+     * The component inherits the current [coroutineScope] and render environment.
      *
      * @param tagName The HTML tag name to use for the inline component's root element in the DOM.
      * @param flow The [Flow] of values to base the inline component on.
@@ -140,29 +126,6 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
 }
 
 /**
- * Specialized version of [Scope.get] which automatically adds the current component and scope as leading parameters,
- * as components are supposed to be created with a reference to their parent component and scope.
- */
-inline fun <reified T: Component> RenderReceiver.getComponent(noinline parameters: ParametersDefinition? = null): T {
-    return scope.get<T> {
-        if (parameters == null) parametersOf(component, scope)
-        else parameters().insert(0, component).insert(1, scope)
-    }
-}
-
-/**
- * Specialized version of [Scope.get] which automatically adds the current component and scope as leading parameters,
- * as components are supposed to be created with a reference to their parent component and scope.
- */
-@Suppress("DEPRECATION")
-inline fun <reified T: Component> Component.getComponent(noinline parameters: ParametersDefinition? = null): T {
-    return scope.get<T> {
-        if (parameters == null) parametersOf(this, scope)
-        else parameters().insert(0, this).insert(1, scope)
-    }
-}
-
-/**
  * An inline version of [Component], which allows to create simple / stateless child-components
  * from a [Component.renderContents] call without having to create a separate class for it.
  */
@@ -172,15 +135,6 @@ internal class InlineComponent(
     initialAttributes: Map<String, String>,
     private val renderBlock: RenderReceiver.() -> Unit
 ) : Component(parent, tagName, initialAttributes) {
-    @Deprecated("Inline components inherit their environment and lifecycle from parent")
-    constructor(
-        parent: Component,
-        @Suppress("UNUSED_PARAMETER") scope: Scope,
-        tagName: String,
-        initialAttributes: Map<String, String>,
-        renderBlock: RenderReceiver.() -> Unit,
-    ) : this(parent, tagName, initialAttributes, renderBlock)
-
     override fun RenderReceiver.renderContents() {
         renderBlock()
     }
@@ -195,7 +149,7 @@ var HTMLElement.componentKt: Component?
 
 /**
  * DSL Marker annotation for [RenderReceiver].
- * Disallows unexpected / unwanted implicit access to koin-/coroutine-scopes of outer components,
+ * Disallows unexpected implicit access to render resources of outer components,
  * when nesting inline components.
  */
 @DslMarker
