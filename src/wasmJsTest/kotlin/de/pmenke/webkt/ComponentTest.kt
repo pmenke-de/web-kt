@@ -1,5 +1,8 @@
 package de.pmenke.webkt
 
+import de.pmenke.webkt.util.ComponentUtil.findAncestor
+import de.pmenke.webkt.util.ComponentUtil.isRoot
+import de.pmenke.webkt.util.ComponentUtil.parents
 import kotlinx.browser.document
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,6 +98,113 @@ class ComponentTest {
         }
         assertEquals(true, asserted)
     }
+
+    @Test
+    fun rootParentageAndAncestorTraversalAreTruthful() {
+        lateinit var child: Component
+        lateinit var grandchild: Component
+        class AppTest : Component(rootScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                child = InlineComponent(this@AppTest, scope, "app-child", emptyMap()) {
+                    grandchild = InlineComponent(component, scope, "app-grandchild", emptyMap()) {}
+                    grandchild.renderTo(this)
+                }
+                child.renderTo(this)
+            }
+        }
+
+        val root = AppTest()
+        document.createTree().run { root.renderTo(this); finalize() }
+
+        assertNull(root.parent)
+        assertTrue(root.isRoot)
+        assertEquals(listOf(child, root), grandchild.parents.toList())
+        assertEquals(root, grandchild.findAncestor<AppTest>())
+        assertNull(root.findAncestor<AppTest>())
+    }
+
+    @Test
+    fun rerenderClosesOldRenderCoroutineAndSubtreeExactlyOnce(): Promise<JsAny?> = coroutineScope.async {
+        var childDisposals = 0
+        lateinit var renderWork: Job
+
+        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+            init {
+                callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
+            }
+
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        class AppTest : Component(rootScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                renderWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
+                Child(this@AppTest, scope).renderTo(this)
+            }
+
+            fun rerender() = updateContents()
+        }
+
+        val component = AppTest()
+        document.createTree().run { component.renderTo(this); finalize() }
+        val firstRenderWork = renderWork
+
+        component.rerender()
+        firstRenderWork.join()
+
+        assertTrue(firstRenderWork.isCancelled)
+        assertEquals(1, childDisposals)
+        component.rerender()
+        assertEquals(2, childDisposals)
+    }.asPromise()
+
+    @Test
+    fun closingRenderKoinScopeClosesItsLifetimeAndSubtreeOnlyOnce(): Promise<JsAny?> = coroutineScope.async {
+        val componentScope = application.koin.createScope<Unit>("external-render-scope-close-test")
+        var renderScope: Scope? = null
+        var renderWork: Job? = null
+        var childDisposals = 0
+
+        class Child(parent: Component, scope: Scope) : Component(parent, scope, "app-child") {
+            init {
+                callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
+            }
+
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        class AppTest : Component(componentScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                renderScope = scope
+                renderWork = coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) { awaitCancellation() }
+                Child(this@AppTest, scope).renderTo(this)
+            }
+
+            fun rerender() = updateContents()
+        }
+
+        val component = AppTest()
+        document.createTree().run { component.renderTo(this); finalize() }
+        val firstRenderWork = requireNotNull(renderWork)
+
+        renderScope!!.close()
+        firstRenderWork.join()
+
+        assertTrue(firstRenderWork.isCancelled)
+        assertEquals(1, childDisposals)
+
+        component.rerender()
+        assertEquals(1, childDisposals, "rerender must not dispose the already closed subtree again")
+        val secondRenderWork = requireNotNull(renderWork)
+
+        componentScope.close()
+        secondRenderWork.join()
+
+        assertTrue(secondRenderWork.isCancelled)
+        assertEquals(2, childDisposals)
+        componentScope.close()
+        assertEquals(2, childDisposals, "owner closure must remain idempotent")
+    }.asPromise()
 
     @Test
     fun testInlineFlowRenderCount(): Promise<JsAny?> {

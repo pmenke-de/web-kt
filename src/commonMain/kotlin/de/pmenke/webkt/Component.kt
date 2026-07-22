@@ -6,10 +6,10 @@ import de.pmenke.webkt.js_interop.WeakReference
 import de.pmenke.webkt.koin_interop.ComponentCoroutineScope
 import de.pmenke.webkt.koin_interop.ComponentScope
 import de.pmenke.webkt.lifecycle.Lifetime
+import de.pmenke.webkt.lifecycle.RenderLifetime
 import de.pmenke.webkt.log.Logger
 import de.pmenke.webkt.log.LoggingAspect
 import de.pmenke.webkt.util.*
-import de.pmenke.webkt.util.SequenceUtil.firstInstance
 import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,16 +54,16 @@ private val LOG = Logger("de.pmenke.webkt.Component")
  * Thus, they form a tree-hierarchy which mirrors the DOM-tree.
  *
  * To retrieve child-components in [renderContents] use [getComponent][RenderReceiver.getComponent], which will automatically pass the
- * current component as its parent and the component's [currentRenderScope] as the child-components scope.
- * Internally each call to [updateContents] or [renderTo] creates a new [currentRenderScope], disposing all child-components
+ * current component as its parent and the current render's [RenderReceiver.scope] as the child-components scope.
+ * Internally each call to [updateContents] or [renderTo] creates a new render lifetime, disposing all child-components
  * of the last render run automatically.
  * You can also use [getComponent][Component.getComponent] from outside [renderContents] / a [RenderReceiver] and bind
  * them to an instance-field (for example) which will inherit the components scope to the child-component directly
  * (sharing the same lifecycle), which is useful, if you want some child-components to persist state across [renderContents] calls.
  *
- * Components can access their parent component via the [parent] property (Note: The "root" component is its own parent!).
- * Through helpers like [de.pmenke.webkt.util.ComponentUtil.parents] and [de.pmenke.webkt.util.SequenceUtil.firstInstance]
- * it is easy to walk up the component-hierarchy and find a specific parent-component.
+ * Components can access their parent component via the nullable [parent] property. A root has no parent.
+ * [de.pmenke.webkt.util.ComponentUtil.parents] and
+ * [de.pmenke.webkt.util.ComponentUtil.findAncestor] provide safe traversal of the component hierarchy.
  *
  * ## Utilities
  * For a component-type independent way to pass values from parent to child components, [Component] contains an [AttributeStore],
@@ -72,8 +72,7 @@ private val LOG = Logger("de.pmenke.webkt.Component")
  * Components also contain a [Callbacks] registry, which can be used to subscribe to lifecycle-events of the component,
  * which also can be used for custom events within component implementations.
  *
- * @param parent The parent component of this component. `null` is only valid for the root-component of a component tree,
- * which is internally turned into a self-reference.
+ * @param parent The parent component of this component. `null` is only valid for the root component of a component tree.
  *
  * When constructing via koin (e.g. [Module.factoryOf]) and instantiating via [getComponent][RenderReceiver.getComponent],
  * the parent component is automatically passed as the first parameter.
@@ -90,6 +89,13 @@ abstract class Component(
     private val initialAttributes: Map<String, String> = emptyMap(),
 ) : KoinScopeComponent {
 
+    /** Convenience constructor for a root component, which has no semantic parent. */
+    protected constructor(
+        scope: Scope,
+        tagName: String,
+        initialAttributes: Map<String, String> = emptyMap(),
+    ) : this(null, scope, tagName, initialAttributes)
+
     /**
      * A unique identifier for this component instance.
      * Primarily useful for logging and debugging, but also used internally to identify [ComponentScope]s.
@@ -101,7 +107,7 @@ abstract class Component(
     private val finalizationCanary = JsObject()
 
     /** Internal owner for this component's coroutines and deterministic cleanup. */
-    private val lifetime = Lifetime(
+    private val componentLifetime = Lifetime(
         Dispatchers.Default,
         cancellationMessage = "Component '$id' closed",
         finalizationCanary = finalizationCanary,
@@ -112,16 +118,15 @@ abstract class Component(
      *
      * Initialized on first access.
      */
-    protected val coroutineScope by lazy { ComponentCoroutineScope(lifetime, WeakReference(this)) }
+    protected val coroutineScope by lazy { ComponentCoroutineScope(componentLifetime, WeakReference(this)) }
 
     /**
      * The parent component of this component.
      *
-     * A "root" component is its own parent.
-     * This trades the necessity of null-checks in all "normal" components for a recursion-check in "special" components,
-     * which want to walk up the component-hierarchy or want to check, if they are the root-component.
+     * Root components have no parent. Child component constructors can continue to require a non-null
+     * parent; only root constructors need to select the parentless base constructor.
      */
-    val parent: Component = parent ?: this
+    val parent: Component? = parent
 
     /**
      * A store for attributes, which can be used to pass values from parent to child components.
@@ -134,7 +139,7 @@ abstract class Component(
      * resources and coroutines, created by child-components during rendering,
      * will be closed / cancelled, when the component is re-rendered.
      */
-    private var currentRenderScope: Scope? = null
+    private var currentRenderLifetime: RenderLifetime? = null
 
     // reference to the result of the last render.
     private var element: HTMLElement? = null
@@ -163,10 +168,10 @@ abstract class Component(
         //       This will lead to "empty" (`weakThis` being empty) callbacks being called when the scope finally closes.
         //       It should remain small because the parent normally supplies its short-lived render scope.
         //       Performance-problems could arise, if someone uses a long-lived scope for short-lived many components.
-        lifetime.onClose { weakThis.deref()?.dispose() }
+        componentLifetime.onClose { weakThis.deref()?.dispose() }
         scope.registerCallback(object : ScopeCallback {
             override fun onScopeClose(scope: Scope) {
-                weakThis.deref()?.lifetime?.close()
+                weakThis.deref()?.componentLifetime?.close()
             }
         })
     }
@@ -178,18 +183,17 @@ abstract class Component(
     protected abstract fun RenderReceiver.renderContents()
 
     /**
-     * closes the [currentRenderScope], create a new one and returns a [RenderReceiver] for rendering into it.
+     * Closes the previous render lifetime, creates a new one, and returns its [RenderReceiver].
      */
     private fun TagConsumer<Element>.newRenderReceiver(): RenderReceiver {
-        currentRenderScope?.close()
-        val renderScope = ComponentScope(this@Component, finalizationCanary).scope.also {
-            this@Component.currentRenderScope = it
+        currentRenderLifetime?.close()
+        val renderLifetime = RenderLifetime(this@Component, finalizationCanary).also {
+            this@Component.currentRenderLifetime = it
         }
-        renderScope.declare(coroutineScope, secondaryTypes = listOf(CoroutineScope::class))
         return object : RenderReceiver, TagConsumer<Element> by this {
-            override val scope: Scope = renderScope
+            override val scope: Scope = renderLifetime.scope
             override val component: Component = this@Component
-            override val coroutineScope: CoroutineScope = renderScope.get()
+            override val coroutineScope: CoroutineScope = renderLifetime.coroutineScope
             override val componentContext: HierarchicalAttributeStore = this@Component.componentContext
         }
     }
@@ -265,7 +269,7 @@ abstract class Component(
 
     /**
      * Disposes this component, firing the [LifecycleCallbacks.Dispose] callback,
-     * closing the [currentRenderScope] and removing the references to/from the DOM element,
+     * closing the current render lifetime and removing the references to/from the DOM element,
      * so that detached components can be garbage collected.
      */
     private fun dispose() {
@@ -288,9 +292,9 @@ abstract class Component(
             }
         }
 
-        val renderScope = currentRenderScope
-        currentRenderScope = null
-        attempt { renderScope?.close() }
+        val renderLifetime = currentRenderLifetime
+        currentRenderLifetime = null
+        attempt { renderLifetime?.close() }
 
         val pendingAnimationRequest = animationRequest
         animationRequest = null
@@ -334,7 +338,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
      * resources and coroutines, created by child-components during rendering,
      * will be closed / cancelled, when the component is re-rendered.
      *
-     * Same as [Component.currentRenderScope] within [Component.renderContents].
+     * This is the Koin compatibility view of the current render lifetime.
      */
     override val scope: Scope
 
@@ -346,7 +350,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
     val component: Component
 
     /**
-     * The [CoroutineScope] in the [Component.currentRenderScope] for this component.
+     * The [CoroutineScope] owned by the current render lifetime.
      * This coroutine scope is tied to the current rendering [scope], so that
      * coroutines launched in this scope will be cancelled, when the component is re-rendered.
      *
@@ -458,7 +462,7 @@ inline fun <reified T: Component> Component.getComponent(noinline parameters: Pa
  * from a [Component.renderContents] call without having to create a separate class for it.
  */
 internal class InlineComponent(
-    parent: Component?,
+    parent: Component,
     scope: Scope,
     tagName: String,
     initialAttributes: Map<String, String>,
