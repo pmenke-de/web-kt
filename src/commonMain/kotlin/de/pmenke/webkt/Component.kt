@@ -33,7 +33,7 @@ private val LOG = Logger("de.pmenke.webkt.Component")
  * Components are the core building block of a webkt application.
  * They encapsulate a piece of UI, defined by their [renderContents] function.
  *
- * Each component is represented in the DOM by its own element, of type [tagName] - which thus should be sth. like `app-$componentName`.
+ * Each component is represented in the DOM by its own element of type [tagName], normally a custom name such as `app-$componentName`.
  *
  * Components can be stateful, i.e. they can hold data which influences their rendering.
  * When the state changes, the component can ask to be re-rendered via [requestUpdate].
@@ -44,7 +44,7 @@ private val LOG = Logger("de.pmenke.webkt.Component")
  * while components should be [factory][org.koin.core.module.Module.factory] definitions, as the same component-class
  * can be used multiple times in the component-hierarchy.
  *
- * Component bind their lifecycle to the given [scope] by listening for the scope's close-callback and calling [dispose]
+ * Components bind their lifecycle to the given [scope] by listening for the scope's close callback and calling [dispose]
  * in return (which also fires the [LifecycleCallbacks.Dispose] callback) to free any non-automatic resources.
  *
  * ## Child-Components
@@ -129,6 +129,7 @@ abstract class Component(
 
     // reference to the result of the last render.
     private var element: HTMLElement? = null
+    private var disposed = false
 
     /**
      * A reference to the DOM element representing this component.
@@ -152,7 +153,7 @@ abstract class Component(
         val weakThis = WeakReference(this)
         // Note: We cannot unregister the callback in case we get disposed before the scope closes.
         //       This will lead to "empty" (`weakThis` being empty) callbacks being called when the scope finally closes.
-        //       It shouldn't be too bad, as the scope (given by the parent) should only its "short-lived" [currentRenderingScope].
+        //       It should remain small because the parent normally supplies its short-lived render scope.
         //       Performance-problems could arise, if someone uses a long-lived scope for short-lived many components.
         scope.registerCallback(object : ScopeCallback {
             override fun onScopeClose(scope: Scope) {
@@ -191,11 +192,13 @@ abstract class Component(
      *       as the former is more concise.
      */
     fun renderTo(consumer: TagConsumer<Element>): HTMLElement {
+        check(!disposed) { "Component '$id' cannot be rendered after its lifecycle scope was closed" }
         LOG.debug(LoggingAspect.RENDERING) { "[$id] renderTo" }
         val tag = HTMLTag(tagName, consumer, initialAttributes, inlineTag = false, emptyTag = false)
         val element = tag.visitAndFinalize(consumer) { consumer.newRenderReceiver().renderContents() } as HTMLElement
         // back-reference to us, so we can find our component from the DOM element
         // and keep us from being garbage collected, as long as the element is reachable.
+        this.element?.takeIf { it !== element }?.componentKt = null
         element.componentKt = this
         this.element = element
         // callback for listeners which want to modify `element` after rendering
@@ -216,7 +219,7 @@ abstract class Component(
      * The rendering runs asynchronously, so the function returns immediately.
      */
     fun requestUpdate() {
-        if (animationRequest == null) {
+        if (!disposed && animationRequest == null) {
             animationRequest = window.requestAnimationFrame {
                 animationRequest = null
                 try {
@@ -257,21 +260,27 @@ abstract class Component(
      * so that detached components can be garbage collected.
      */
     private fun dispose() {
+        if (disposed) return
+        disposed = true
         LOG.debug { "[$id] dispose" }
         callbacks.notify(LifecycleCallbacks.Dispose) { ex ->
             LOG.error { "[$id] uncaught exception during dispose callback: ${ex.stackTraceToString()}" }
         }
         currentRenderScope?.close()
         currentRenderScope = null
+        animationRequest?.let(window::cancelAnimationFrame)
+        animationRequest = null
         element?.componentKt = null
         element = null
+        callbacks.clear()
     }
 
     companion object {
         object LifecycleCallbacks {
             /**
-             * Fired after the component was rendered or re-rendered and applied to the DOM.
-             * Intended use is to perform DOM operations, that aren't possible while the component is being rendered.
+             * Fired after the component's element has been created or its contents have been updated.
+             * On the initial render the caller may not have inserted the returned element into the document yet.
+             * Intended for DOM operations that cannot be expressed while rendering.
              */
             val AfterRender = CallbackKey("afterRender")
 
@@ -366,14 +375,22 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
         flow: StateFlow<T>,
         classes: String = "",
         renderBlock: RenderReceiver.(T) -> Unit): Component {
-        val weakInitialValue = flow.value?.let { WeakReference(it) }
+        var initialValue: Any? = flow.value
+        var awaitingFirstEmission = true
         val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
             renderBlock(flow.value)
         }
         // drop the first value, as we already rendered it initially.
         // just using `drop(1)` can lead to a race-condition, if the flow emits a new value before we subscribe, losing that value.
-        // thus we use `dropWhile` to skip only the exact initial value (without creating a strong reference to it).
-        flow.dropWhile { weakInitialValue?.deref() === it }
+        // Compare only the first collected value with the rendered value, then release that value immediately.
+        // This also handles null and does not suppress a later return to the initial object.
+        flow.dropWhile { value ->
+            if (!awaitingFirstEmission) return@dropWhile false
+            awaitingFirstEmission = false
+            val isAlreadyRendered = initialValue === value
+            initialValue = null
+            isAlreadyRendered
+        }
             .onEach { component.requestUpdate() }
             .launchIn(coroutineScope)
         component.renderTo(this)

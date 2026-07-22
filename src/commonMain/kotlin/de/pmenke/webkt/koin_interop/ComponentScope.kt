@@ -12,11 +12,19 @@ import org.koin.core.scope.ScopeCallback
 
 private val LOG = Logger("de.pmenke.webkt.koin_interop.ComponentScope")
 
+/**
+ * Owns the short-lived Koin scope used for one component render.
+ *
+ * The scope closes explicitly on the next render and defensively through a JavaScript
+ * finalization registry if the owning component becomes unreachable first.
+ */
 class ComponentScope(component: Component, finalizationCanary: JsAny) : KoinComponent {
     private val componentRef = WeakReference(component)
 
+    /** The Koin scope exposed to children created during the render. */
     val scope: Scope = getKoin().createScope<ComponentScope>("ComponentScope-${component.id}", this)
 
+    /** Owning component while it remains reachable. */
     val component: Component
         get() = componentRef.deref()
             // Note: As this should normally only ever be accessed from the scope's defining component and its

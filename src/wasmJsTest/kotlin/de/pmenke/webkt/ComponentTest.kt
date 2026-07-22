@@ -14,11 +14,13 @@ import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.core.scope.Scope
 import org.w3c.dom.Element
+import org.w3c.dom.HTMLElement
 import kotlin.js.Promise
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class ComponentTest {
     val coroutineScope = CoroutineScope(Dispatchers.Default)
@@ -114,6 +116,41 @@ class ComponentTest {
             assertEquals(1, renderCountA, "Inline flow component (StateFlow) should render exactly once initially")
             assertEquals(1, renderCountB, "Inline flow component (empty normal Flow) should render exactly once initially")
         }.asPromise()
+    }
+
+    @Test
+    fun nullableStateFlowRendersOnlyOnceInitially(): Promise<JsAny?> {
+        var renderCount = 0
+        class AppTest : Component(null, rootScope, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                inlineFlowComponent("app-null", MutableStateFlow<String?>(null)) {
+                    renderCount++
+                }
+            }
+        }
+
+        document.createTree().run {
+            AppTest().renderTo(this)
+            finalize()
+        }
+
+        return coroutineScope.async {
+            delay(100)
+            assertEquals(1, renderCount)
+        }.asPromise()
+    }
+
+    @Test
+    fun renderingAgainReleasesTheOldElementBackReference() {
+        class AppTest : Component(null, rootScope, "app-test") {
+            override fun RenderReceiver.renderContents() = Unit
+        }
+        val component = AppTest()
+        val first = document.createTree().run { component.renderTo(this); finalize() } as HTMLElement
+        val second = document.createTree().run { component.renderTo(this); finalize() } as HTMLElement
+
+        assertNull(first.componentKt)
+        assertEquals(component, second.componentKt)
     }
 }
 

@@ -10,7 +10,7 @@ import org.koin.core.scope.ScopeCallback
 private val LOG = Logger("de.pmenke.webkt.koin_interop.ComponentCoroutineScope")
 
 /**
- * A CoroutineScope that is tied to the lifecycle of a [ComponentScope].
+ * A [CoroutineScope] tied to the lifecycle of a component's owning Koin [Scope].
  *
  * When the Component's scope is closed, all coroutines launched in this scope are cancelled.
  *
