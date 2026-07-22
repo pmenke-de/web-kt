@@ -431,4 +431,44 @@ class ComponentEnvironmentTest {
         assertEquals(1, childDisposals)
         assertEquals(1, directChildDisposals)
     }
+
+    @Test
+    fun persistentChildCanRenderAcrossParentRendersWithoutChangingOwnership() {
+        var childRenders = 0
+        var childDisposals = 0
+
+        class Child(parent: Component) : Component(parent, "persistent-rendered-child") {
+            init {
+                callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
+            }
+
+            override fun RenderReceiver.renderContents() {
+                childRenders++
+            }
+        }
+
+        class Root : Component(ComponentEnvironment.Empty, "app-root") {
+            val persistentChild = Child(this)
+
+            override fun RenderReceiver.renderContents() {
+                render(persistentChild)
+            }
+
+            fun rerender() = updateContents()
+        }
+
+        val root = constructComponent { Root() }
+        document.createTree().run { root.renderTo(this); finalize() }
+        assertEquals(1, childRenders)
+        assertEquals(0, childDisposals)
+
+        root.rerender()
+        assertEquals(2, childRenders)
+        assertEquals(0, childDisposals, "parent rerender must not close its persistent child")
+
+        root.close()
+        assertEquals(1, childDisposals)
+        root.close()
+        assertEquals(1, childDisposals, "persistent child closes exactly once with its parent")
+    }
 }

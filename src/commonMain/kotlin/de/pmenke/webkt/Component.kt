@@ -265,6 +265,13 @@ abstract class Component private constructor(
         require(parent === receiver.component) {
             "Component '$id' must be rendered by its declared parent '${parent?.id}'"
         }
+        if (lifecycleOwner === receiver.component.componentLifetime) {
+            // A persistent child may participate in any successful render of its owning parent.
+            // Rendering replaces only the child's own render lifetime; it must not transfer the
+            // component itself into the parent's short-lived render lifetime.
+            releaseFromConstruction()
+            return
+        }
         adopt(receiver.renderLifetime) { receiver.renderLifetime.own(this) }
     }
 
