@@ -19,6 +19,9 @@ import org.w3c.dom.HTMLElement
 
 @ComponentDSL
 interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
+    /** DI-neutral integration resource owned by the current render attempt. */
+    val environment: RenderEnvironment
+
     /**
      * The current rendering [Scope] for this component.
      * A new scope is created for each rendering of the component, so that
@@ -71,7 +74,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
         classes: String = "",
         renderBlock: RenderReceiver.(T) -> Unit): Component {
         var currentValue: T = initialValue
-        val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
+        val component = InlineComponent(component, tagName, classes.toInitialAttributes()) {
             renderBlock(currentValue)
         }
         flow.onEach { value ->
@@ -120,7 +123,7 @@ interface RenderReceiver : TagConsumer<Element>, KoinScopeComponent {
         var currentValue = value.value
         var initiallyRenderedValue: Any? = currentValue
         var awaitingFirstEmission = true
-        val component = InlineComponent(component, scope, tagName, classes.toInitialAttributes()) {
+        val component = InlineComponent(component, tagName, classes.toInitialAttributes()) {
             renderBlock(currentValue)
         }
         value.updates.onEach { update ->
@@ -151,6 +154,7 @@ inline fun <reified T: Component> RenderReceiver.getComponent(noinline parameter
  * Specialized version of [Scope.get] which automatically adds the current component and scope as leading parameters,
  * as components are supposed to be created with a reference to their parent component and scope.
  */
+@Suppress("DEPRECATION")
 inline fun <reified T: Component> Component.getComponent(noinline parameters: ParametersDefinition? = null): T {
     return scope.get<T> {
         if (parameters == null) parametersOf(this, scope)
@@ -164,11 +168,19 @@ inline fun <reified T: Component> Component.getComponent(noinline parameters: Pa
  */
 internal class InlineComponent(
     parent: Component,
-    scope: Scope,
     tagName: String,
     initialAttributes: Map<String, String>,
     private val renderBlock: RenderReceiver.() -> Unit
-) : Component(parent, scope, tagName, initialAttributes) {
+) : Component(parent, tagName, initialAttributes) {
+    @Deprecated("Inline components inherit their environment and lifecycle from parent")
+    constructor(
+        parent: Component,
+        @Suppress("UNUSED_PARAMETER") scope: Scope,
+        tagName: String,
+        initialAttributes: Map<String, String>,
+        renderBlock: RenderReceiver.() -> Unit,
+    ) : this(parent, tagName, initialAttributes, renderBlock)
+
     override fun RenderReceiver.renderContents() {
         renderBlock()
     }

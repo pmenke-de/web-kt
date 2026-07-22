@@ -7,7 +7,7 @@ import de.pmenke.webkt.log.Logger
 import de.pmenke.webkt.log.LoggingAspect
 import de.pmenke.webkt.util.IdGenerator
 import js.memory.FinalizationRegistry
-import org.koin.core.component.KoinComponent
+import org.koin.core.Koin
 import org.koin.core.scope.Scope
 import org.koin.core.scope.ScopeCallback
 
@@ -19,17 +19,14 @@ private val LOG = Logger("de.pmenke.webkt.koin_interop.ComponentScope")
  * The scope closes explicitly on the next render and defensively through a JavaScript
  * finalization registry if the owning component becomes unreachable first.
  */
-class ComponentScope(component: Component, finalizationCanary: JsAny) : KoinComponent {
+class ComponentScope private constructor(
+    component: Component,
+) {
     private val componentRef = WeakReference(component)
 
-    /**
-     * The Koin scope exposed to children created during the render.
-     * Its identifier is unique per render so a prepared replacement can overlap the current render until commit.
-     */
-    val scope: Scope = getKoin().createScope<ComponentScope>(
-        "ComponentScope-${component.id}-${IdGenerator.next}",
-        this,
-    )
+    /** The Koin scope exposed to children created during the render. */
+    lateinit var scope: Scope
+        private set
 
     /** Owning component while it remains reachable. */
     val component: Component
@@ -39,16 +36,71 @@ class ComponentScope(component: Component, finalizationCanary: JsAny) : KoinComp
             //       have a strong reference to their parent, keeping it from being garbage collected.
             ?: error("ComponentScope's component was garbage collected")
 
-    init {
+    private fun initialize(scope: Scope, finalizationCanary: JsAny) {
+        this.scope = scope
         // if we created our own scope, we need to close it, when this component gets garbage collected,
         // as scopes are kept alive by koin's internal scope-registry forever (until they're closed).
         val unregisterToken = JsObject()
-        componentScopeFinalizationRegistry.register(finalizationCanary, scope.toJsReference(), unregisterToken)
-        scope.registerCallback(object : ScopeCallback {
-            override fun onScopeClose(scope: Scope) {
-                componentScopeFinalizationRegistry.unregister(unregisterToken)
+        var finalizerRegistered = false
+        try {
+            componentScopeFinalizationRegistry.register(finalizationCanary, scope.toJsReference(), unregisterToken)
+            finalizerRegistered = true
+            scope.registerCallback(object : ScopeCallback {
+                override fun onScopeClose(scope: Scope) {
+                    componentScopeFinalizationRegistry.unregister(unregisterToken)
+                }
+            })
+        } catch (exception: Throwable) {
+            if (finalizerRegistered) {
+                try {
+                    componentScopeFinalizationRegistry.unregister(unregisterToken)
+                } catch (cleanupFailure: Throwable) {
+                    exception.addSuppressed(cleanupFailure)
+                }
             }
-        })
+            throw exception
+        }
+    }
+
+    companion object {
+        /** Creates and fully initializes a render scope, rolling back every partial step on failure. */
+        internal fun create(
+            component: Component,
+            finalizationCanary: JsAny,
+            koin: Koin,
+            parentScope: Scope,
+        ): ComponentScope {
+            val owner = ComponentScope(component)
+            var createdScope: Scope? = null
+            try {
+                createdScope = koin.createScope<ComponentScope>(
+                    "ComponentScope-${component.id}-${IdGenerator.next}",
+                    owner,
+                )
+                createdScope.linkTo(parentScope)
+                ComponentScopeHooks.afterScopeLinked(createdScope)
+                owner.initialize(createdScope, finalizationCanary)
+                return owner
+            } catch (exception: Throwable) {
+                createdScope?.let { scope ->
+                    try {
+                        if (!scope.closed) scope.close()
+                    } catch (cleanupFailure: Throwable) {
+                        exception.addSuppressed(cleanupFailure)
+                    }
+                }
+                throw exception
+            }
+        }
+    }
+}
+
+/** Failure-injection seam for render-scope construction rollback tests. */
+internal object ComponentScopeHooks {
+    var afterScopeLinked: (Scope) -> Unit = {}
+
+    fun reset() {
+        afterScopeLinked = {}
     }
 }
 

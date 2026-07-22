@@ -1,5 +1,6 @@
 package de.pmenke.webkt.lifecycle
 
+import de.pmenke.webkt.ResourceLifetime
 import de.pmenke.webkt.js_interop.JsObject
 import de.pmenke.webkt.js_interop.WeakReference
 import js.memory.FinalizationRegistry
@@ -22,7 +23,7 @@ internal class Lifetime(
     context: CoroutineContext = EmptyCoroutineContext,
     private val cancellationMessage: String = "Lifetime closed",
     finalizationCanary: JsAny? = null,
-) : CoroutineScope, AutoCloseable {
+) : ResourceLifetime {
     init {
         require(context[Job] == null) {
             "A Lifetime owns an unparented Job; close it explicitly from its owning lifetime"
@@ -52,7 +53,7 @@ internal class Lifetime(
     override val coroutineContext: CoroutineContext = context.minusKey(Job) + job
 
     /** Whether [close] has started. */
-    val isClosed: Boolean
+    override val isClosed: Boolean
         get() = closed
 
     /**
@@ -61,7 +62,7 @@ internal class Lifetime(
      * If closure has already started, [cleanup] runs immediately so late registration cannot
      * leak its resource.
      */
-    fun onClose(cleanup: () -> Unit) {
+    override fun onClose(cleanup: () -> Unit) {
         if (closed) {
             cleanup()
         } else {

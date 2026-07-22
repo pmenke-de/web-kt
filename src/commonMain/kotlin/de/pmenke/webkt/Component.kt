@@ -4,6 +4,8 @@ import de.pmenke.webkt.js_interop.JsObject
 import de.pmenke.webkt.js_interop.WeakReference
 import de.pmenke.webkt.koin_interop.ComponentCoroutineScope
 import de.pmenke.webkt.koin_interop.ComponentScope
+import de.pmenke.webkt.koin_interop.KoinComponentEnvironment
+import de.pmenke.webkt.koin_interop.KoinRenderEnvironment
 import de.pmenke.webkt.lifecycle.Lifetime
 import de.pmenke.webkt.lifecycle.RenderLifetime
 import de.pmenke.webkt.log.Logger
@@ -18,11 +20,16 @@ import org.koin.core.component.KoinScopeComponent
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.scope.Scope
-import org.koin.core.scope.ScopeCallback
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLElement
 
 private val LOG = Logger("de.pmenke.webkt.Component")
+
+/** Internal ownership view implemented by receivers created for a concrete render attempt. */
+internal interface OwningRenderReceiver {
+    val component: Component
+    val renderLifetime: RenderLifetime
+}
 
 
 /**
@@ -35,26 +42,29 @@ private val LOG = Logger("de.pmenke.webkt.Component")
  * Components can be stateful, i.e. they can hold data which influences their rendering.
  * When the state changes, the component can ask to be re-rendered via [requestUpdate].
  *
- * ## Scope: Dependency-Injection & Lifecycle
- * Components implement the [KoinScopeComponent] interface. They can use dependency injection to obtain their dependencies and child components.
- * Dependencies (like services, repositories, ...) generally should be [singletons][org.koin.core.module.Module.single],
- * while components should be [factory][org.koin.core.module.Module.factory] definitions, as the same component-class
- * can be used multiple times in the component-hierarchy.
+ * ## Environment, dependency injection, and lifecycle
+ * A root receives a Koin-free [ComponentEnvironment], and children inherit it from their non-null
+ * parent. Component and render lifetimes own their coroutines and resources directly. [close]
+ * deterministically closes the complete tree; replacing a render closes only the previous render's
+ * children and resources. Construct new-model roots with [constructComponent] so a failing subclass
+ * initializer can roll back resources initialized by the base component.
  *
- * Components bind their lifecycle to the given [scope] by listening for the scope's close callback and calling [dispose]
- * in return (which also fires the [LifecycleCallbacks.Dispose] callback) to free any non-automatic resources.
+ * Koin support is an adapter in [de.pmenke.webkt.koin_interop]. Applications using Koin should give
+ * their root a [KoinComponentEnvironment][de.pmenke.webkt.koin_interop.KoinComponentEnvironment]
+ * and define components as factories. The inherited [KoinScopeComponent] surface is retained only
+ * for source compatibility while scope-taking component constructors are migrated.
  *
  * ## Child-Components
  * Components can have child-components, which are rendered within the parent's [renderContents] function.
  * Thus, they form a tree-hierarchy which mirrors the DOM-tree.
  *
- * To retrieve child-components in [renderContents] use [getComponent][RenderReceiver.getComponent], which will automatically pass the
- * current component as its parent and the current render's [RenderReceiver.scope] as the child-components scope.
+ * The Koin adapter's `RenderReceiver.getComponent` resolves a child in a fresh per-render Koin scope
+ * and automatically passes the current component as its parent.
  * Internally each call to [updateContents] or [renderTo] prepares a new render lifetime. It becomes active only
  * after rendering succeeds; the last successful lifetime and its child-components are then disposed automatically.
- * You can also use [getComponent][Component.getComponent] from outside [renderContents] / a [RenderReceiver] and bind
- * them to an instance-field (for example) which will inherit the components scope to the child-component directly
- * (sharing the same lifecycle), which is useful, if you want some child-components to persist state across [renderContents] calls.
+ * A child resolved with the Koin adapter's `Component.getComponent`, or returned by
+ * [constructComponent] outside [renderContents], belongs to the parent component lifetime. This is
+ * useful for child instances that must preserve state across renders.
  *
  * Components can access their parent component via the nullable [parent] property. A root has no parent.
  * [de.pmenke.webkt.util.ComponentUtil.parents] and
@@ -67,29 +77,61 @@ private val LOG = Logger("de.pmenke.webkt.Component")
  * Components also contain a [Callbacks] registry, which can be used to subscribe to lifecycle-events of the component,
  * which also can be used for custom events within component implementations.
  *
- * @param parent The parent component of this component. `null` is only valid for the root component of a component tree.
- *
- * When constructing via koin (e.g. [Module.factoryOf]) and instantiating via [getComponent][RenderReceiver.getComponent],
- * the parent component is automatically passed as the first parameter.
- * @param scope The [Scope] to bind this component's lifecycle to.
- * When constructing via koin (e.g. [Module.factoryOf]) and instantiating via [getComponent][RenderReceiver.getComponent],
- * the scope is automatically passed as the second parameter.
  * @param tagName The HTML tag name to use for this component's root element in the DOM.
  * @param initialAttributes Attributes to set on this component's element in the DOM (e.g. `class` or `data-something`).
  */
-abstract class Component(
+abstract class Component private constructor(
     parent: Component?,
-    override val scope: Scope,
+    /** Koin-free environment shared by this component tree. */
+    val environment: ComponentEnvironment,
+    private val legacyScope: Scope?,
+    private val legacyOwnership: Boolean,
     private val tagName: String,
     private val initialAttributes: Map<String, String> = emptyMap(),
-) : KoinScopeComponent {
+) : KoinScopeComponent, AutoCloseable {
+
+    /** Creates a root component using a DI-neutral [environment]. */
+    protected constructor(
+        environment: ComponentEnvironment,
+        tagName: String,
+        initialAttributes: Map<String, String> = emptyMap(),
+    ) : this(null, environment, null, false, tagName, initialAttributes)
+
+    /** Creates a child component which inherits its non-null [parent]'s environment. */
+    protected constructor(
+        parent: Component,
+        tagName: String,
+        initialAttributes: Map<String, String> = emptyMap(),
+    ) : this(parent, parent.environment, null, false, tagName, initialAttributes)
+
+    /**
+     * Koin compatibility view of this component's owning scope.
+     *
+     * New components should use constructor injection and [environment]. Render-time Koin lookup
+     * belongs to the adapter extensions in `de.pmenke.webkt.koin_interop`.
+     */
+    @Deprecated("Use constructor injection and Component.environment")
+    override val scope: Scope
+        get() = legacyScope
+            ?: (environment as? KoinComponentEnvironment)?.scope
+            ?: error("This component does not use a KoinComponentEnvironment")
+
+    /** Legacy constructor retained while downstream components migrate to an environment. */
+    @Deprecated("Use Component(environment, tagName, initialAttributes) for roots or Component(parent, tagName, initialAttributes) for children")
+    protected constructor(
+        parent: Component?,
+        scope: Scope,
+        tagName: String,
+        initialAttributes: Map<String, String> = emptyMap(),
+    ) : this(parent, KoinComponentEnvironment(scope), scope, true, tagName, initialAttributes)
 
     /** Convenience constructor for a root component, which has no semantic parent. */
+    @Deprecated("Use Component(KoinComponentEnvironment(scope), tagName, initialAttributes)")
     protected constructor(
         scope: Scope,
         tagName: String,
         initialAttributes: Map<String, String> = emptyMap(),
-    ) : this(null, scope, tagName, initialAttributes)
+    ) : this(null, KoinComponentEnvironment(scope), scope, true, tagName, initialAttributes)
 
     /**
      * A unique identifier for this component instance.
@@ -99,7 +141,7 @@ abstract class Component(
 
     // An opaque JsAny kept alive only by this instance. Finalization registries use it to close
     // the render Koin scope and cancel any independently reachable component coroutine job.
-    private val finalizationCanary = JsObject()
+    internal val finalizationCanary = JsObject()
 
     /** Internal owner for this component's coroutines and deterministic cleanup. */
     private val componentLifetime = Lifetime(
@@ -139,6 +181,7 @@ abstract class Component(
     // reference to the result of the last render.
     private var element: HTMLElement? = null
     private var disposed = false
+    private var lifecycleOwner: Any? = if (legacyOwnership) LegacyLifecycleOwner else null
 
     /**
      * A reference to the DOM element representing this component.
@@ -153,23 +196,98 @@ abstract class Component(
     val callbacks = Callbacks()
 
     init {
-        LOG.debug { "[$id] component-init in scope ${scope.id} with parent ${parent?.id}" }
-        // only take a weak reference to ourselves in the scope-callback, as the scope might outlive us,
-        // which would stop garbage collection of this component, if the scope had a strong reference.
+        LOG.debug { "[$id] component-init with parent ${parent?.id}" }
+        // Keep lifecycle cleanup independent from the component's reachability.
         // Finalization handles only cycle-safe fallback work after the component becomes unreachable;
         // deterministic disposal always follows closure of this owning scope/lifetime.
         val weakThis = WeakReference(this)
-        // Note: We cannot unregister the callback in case we get disposed before the scope closes.
-        //       This will lead to "empty" (`weakThis` being empty) callbacks being called when the scope finally closes.
-        //       It should remain small because the parent normally supplies its short-lived render scope.
-        //       Performance-problems could arise, if someone uses a long-lived scope for short-lived many components.
         componentLifetime.onClose { weakThis.deref()?.dispose() }
-        scope.registerCallback(object : ScopeCallback {
-            override fun onScopeClose(scope: Scope) {
-                weakThis.deref()?.componentLifetime?.close()
+        if (legacyOwnership) {
+            try {
+                environment.attachComponent(this, componentLifetime)
+            } catch (exception: Throwable) {
+                try {
+                    componentLifetime.close()
+                } catch (cleanupFailure: Throwable) {
+                    exception.addSuppressed(cleanupFailure)
+                }
+                throw exception
             }
-        })
+        } else {
+            try {
+                ComponentConstruction.register(this)
+            } catch (exception: Throwable) {
+                try {
+                    componentLifetime.close()
+                } catch (cleanupFailure: Throwable) {
+                    exception.addSuppressed(cleanupFailure)
+                }
+                throw exception
+            }
+        }
     }
+
+    /** Releases a successfully constructed component to its caller before it is mounted. */
+    internal fun releaseFromConstruction() {
+        ComponentConstruction.release(this)
+    }
+
+    /** Adopts a child which must persist for this component's complete lifetime. */
+    internal fun adoptPersistentChild(child: Component) {
+        require(child.parent === this) { "Component '${child.id}' is not a child of '$id'" }
+        child.adopt(componentLifetime) { componentLifetime.onClose(child::close) }
+    }
+
+    /** Adopts a resolved child and the persistent descendants built by its initializer. */
+    internal fun adoptPersistentTree(child: Component) {
+        ComponentConstruction.completeAdoption(child) { adoptPersistentChild(child) }
+    }
+
+    /** Adopts this root after its first successful mount. */
+    private fun adoptRoot() {
+        check(parent == null) { "Only a root component can be adopted by its environment" }
+        try {
+            adopt(environment) { environment.attachComponent(this, componentLifetime) }
+        } catch (exception: Throwable) {
+            // Attachment may have registered partial integration cleanup with the lifetime. A root
+            // whose first owner rejected it cannot safely be retried with ambiguous registrations.
+            try {
+                close()
+            } catch (cleanupFailure: Throwable) {
+                exception.addSuppressed(cleanupFailure)
+            }
+            throw exception
+        }
+    }
+
+    /** Adopts this child into the receiver's successful render attempt. */
+    private fun adoptRenderedChild(receiver: OwningRenderReceiver) {
+        require(parent === receiver.component) {
+            "Component '$id' must be rendered by its declared parent '${parent?.id}'"
+        }
+        adopt(receiver.renderLifetime) { receiver.renderLifetime.own(this) }
+    }
+
+    /** Adapter hook which adopts a successfully resolved child into this render. */
+    internal fun adoptInto(receiver: RenderReceiver) {
+        val owner = receiver as? OwningRenderReceiver
+            ?: error("Components can only be adopted by a WebKt render receiver")
+        ComponentConstruction.completeAdoption(this) { adoptRenderedChild(owner) }
+    }
+
+    private fun adopt(owner: Any, register: () -> Unit) {
+        if (legacyOwnership || lifecycleOwner === owner) {
+            releaseFromConstruction()
+            return
+        }
+        check(lifecycleOwner == null) { "Component '$id' already belongs to another lifetime" }
+        register()
+        lifecycleOwner = owner
+        releaseFromConstruction()
+    }
+
+    /** Closes this component, its current render, child components, coroutines, and resources. */
+    final override fun close() = componentLifetime.close()
 
     /**
      * renders the contents of this component into the element created for this component
@@ -196,12 +314,17 @@ abstract class Component(
         renderLifetime: RenderLifetime,
         transaction: RenderTransaction,
     ): RenderReceiver {
-        return object : RenderReceiver, TransactionalRenderConsumer, TagConsumer<Element> by this {
-            override val scope: Scope = renderLifetime.scope
+        return object : RenderReceiver, TransactionalRenderConsumer, OwningRenderReceiver, TagConsumer<Element> by this {
+            override val environment: RenderEnvironment = renderLifetime.environment
+            @Suppress("DEPRECATION")
+            override val scope: Scope
+                get() = (environment as? KoinRenderEnvironment)?.scope
+                    ?: error("This render does not use a KoinComponentEnvironment")
             override val component: Component = this@Component
             override val coroutineScope: CoroutineScope = renderLifetime.coroutineScope
             override val componentContext: HierarchicalAttributeStore = this@Component.componentContext
             override val renderTransaction: RenderTransaction = transaction
+            override val renderLifetime: RenderLifetime = renderLifetime
         }
     }
 
@@ -226,12 +349,14 @@ abstract class Component(
             val callbackCheckpoint = transaction.checkpoint()
             // A neutral staging element avoids invoking a registered custom-element constructor for `tagName`.
             val contents = kotlinx.browser.document.createElement("div") as HTMLElement
-            val lifetime = RenderLifetime(this, finalizationCanary)
+            val lifetime = RenderLifetime(this, finalizationCanary, environment)
             try {
-                contents.append {
-                    renderReceiver(lifetime, transaction).block()
-                    finalizeAllowingEmptyContents()
-                }
+                ComponentConstruction.run(block = {
+                    contents.append {
+                        renderReceiver(lifetime, transaction).block()
+                        finalizeAllowingEmptyContents()
+                    }
+                })
                 return RenderAttempt(contents, lifetime, callbackCheckpoint)
             } catch (exception: Throwable) {
                 try {
@@ -298,6 +423,8 @@ abstract class Component(
      * During detached construction, a nested component exposes its candidate [currentElement] so established
      * render-time DOM setup remains possible. That state is tentative: if the containing transaction is discarded,
      * its previous element, back-reference, and render lifetime are restored before the failure is propagated.
+     * A failed first root-environment attachment closes the root permanently. Failures from post-commit
+     * callbacks do not roll back the already mounted and owned root.
      */
     fun renderTo(consumer: TagConsumer<Element>): HTMLElement {
         check(!disposed) { "Component '$id' cannot be rendered after its lifecycle scope was closed" }
@@ -310,12 +437,19 @@ abstract class Component(
             val materializeRoot = ComponentRenderHooks.materializeRoot
             // Materialization is the standalone render's DOM commit point.
             ensureActiveForCommit()
-            materializeRoot(tagName, consumer, initialAttributes).also { newElement ->
+            val materializedElement = materializeRoot(tagName, consumer, initialAttributes).also { newElement ->
                 while (attempt.contents.firstChild != null) {
                     newElement.appendChild(attempt.contents.firstChild!!)
                 }
                 ensureActiveForCommit()
             }
+            when {
+                legacyOwnership -> Unit
+                consumer is OwningRenderReceiver -> adoptInto(consumer as RenderReceiver)
+                parent == null -> adoptRoot()
+                else -> parent.adoptPersistentTree(this)
+            }
+            materializedElement
         } catch (exception: Throwable) {
             discardRenderAttempt(transaction, attempt, exception)
             throw exception
@@ -462,6 +596,8 @@ abstract class Component(
     }
 
     companion object {
+        private object LegacyLifecycleOwner
+
         object LifecycleCallbacks {
             /**
              * Fired after the component's element has been created or its contents have been updated.
