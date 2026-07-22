@@ -161,7 +161,12 @@ route. Parameter segments must use a non-empty `{name}` form.
 
 `NavigatorService` exposes `path` and `hash` state flows and respects the document's `<base href>`. It
 intercepts only unmodified, primary-button, same-origin links within that base path. Modified clicks,
-downloads, external targets, and links outside the application remain browser-native.
+downloads, external targets, and links outside the application remain browser-native. The service owns
+global document and window listeners, so its application owner must call `close()` at shutdown. Closure is
+idempotent; it detaches both listeners. Navigation preserves query strings in browser history while `path`
+remains the application pathname only. After shutdown begins, further `navigateTo` calls fail fast.
+If listener cleanup itself fails, shutdown has still begun: navigation and event handling stay disabled,
+while a later `close()` retries only unfinished cleanup.
 
 ## Observable values
 
