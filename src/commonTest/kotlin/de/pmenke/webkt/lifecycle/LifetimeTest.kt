@@ -78,6 +78,51 @@ class LifetimeTest {
     }
 
     @Test
+    fun removableCleanupCanBeDetachedBeforeClosure() {
+        val lifetime = Lifetime()
+        var cleanupCount = 0
+        val registration = lifetime.onCloseRemovable { cleanupCount++ }
+
+        registration.close()
+        registration.close()
+        lifetime.close()
+
+        assertEquals(0, cleanupCount)
+    }
+
+    @Test
+    fun ownerDrivenCleanupCanCloseItsOwnRegistration() {
+        val lifetime = Lifetime()
+        val events = mutableListOf<String>()
+        lateinit var registration: AutoCloseable
+        registration = lifetime.onCloseRemovable {
+            events += "cleanup-start"
+            registration.close()
+            events += "cleanup-end"
+        }
+
+        lifetime.close()
+        lifetime.close()
+
+        assertEquals(listOf("cleanup-start", "cleanup-end"), events)
+    }
+
+    @Test
+    fun cleanupCanDetachAnotherEntryWhileClosureIsInProgress() {
+        val lifetime = Lifetime()
+        val events = mutableListOf<String>()
+        val detached = lifetime.onCloseRemovable { events += "detached" }
+        lifetime.onClose {
+            events += "detaching"
+            detached.close()
+        }
+
+        lifetime.close()
+
+        assertEquals(listOf("detaching"), events)
+    }
+
+    @Test
     fun finalizationFallbackCancelsCoroutinesWithoutRunningResourceCleanup(): Promise<JsAny?> =
         CoroutineScope(Dispatchers.Main).async {
             val lifetime = Lifetime()

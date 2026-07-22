@@ -182,6 +182,7 @@ abstract class Component private constructor(
     private var element: HTMLElement? = null
     private var disposed = false
     private var lifecycleOwner: Any? = if (legacyOwnership) LegacyLifecycleOwner else null
+    private var ownershipRegistration: AutoCloseable? = null
 
     /**
      * A reference to the DOM element representing this component.
@@ -235,7 +236,7 @@ abstract class Component private constructor(
     /** Adopts a child which must persist for this component's complete lifetime. */
     internal fun adoptPersistentChild(child: Component) {
         require(child.parent === this) { "Component '${child.id}' is not a child of '$id'" }
-        child.adopt(componentLifetime) { componentLifetime.onClose(child::close) }
+        child.adopt(componentLifetime) { componentLifetime.onCloseRemovable(child::close) }
     }
 
     /** Adopts a resolved child and the persistent descendants built by its initializer. */
@@ -247,7 +248,10 @@ abstract class Component private constructor(
     private fun adoptRoot() {
         check(parent == null) { "Only a root component can be adopted by its environment" }
         try {
-            adopt(environment) { environment.attachComponent(this, componentLifetime) }
+            adopt(environment) {
+                environment.attachComponent(this, componentLifetime)
+                null
+            }
         } catch (exception: Throwable) {
             // Attachment may have registered partial integration cleanup with the lifetime. A root
             // whose first owner rejected it cannot safely be retried with ambiguous registrations.
@@ -282,19 +286,24 @@ abstract class Component private constructor(
         ComponentConstruction.completeAdoption(this) { adoptRenderedChild(owner) }
     }
 
-    private fun adopt(owner: Any, register: () -> Unit) {
+    private fun adopt(owner: Any, register: () -> AutoCloseable?) {
         if (legacyOwnership || lifecycleOwner === owner) {
             releaseFromConstruction()
             return
         }
         check(lifecycleOwner == null) { "Component '$id' already belongs to another lifetime" }
-        register()
+        ownershipRegistration = register()
         lifecycleOwner = owner
         releaseFromConstruction()
     }
 
     /** Closes this component, its current render, child components, coroutines, and resources. */
-    final override fun close() = componentLifetime.close()
+    final override fun close() {
+        val registration = ownershipRegistration
+        ownershipRegistration = null
+        registration?.close()
+        componentLifetime.close()
+    }
 
     /**
      * renders the contents of this component into the element created for this component

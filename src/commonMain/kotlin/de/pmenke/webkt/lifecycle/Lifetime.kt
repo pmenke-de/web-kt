@@ -31,8 +31,31 @@ internal class Lifetime(
     }
 
     private val job = SupervisorJob()
-    private val cleanupActions = mutableListOf<() -> Unit>()
+    private val cleanupActions = mutableListOf<CleanupRegistration>()
     private var closed = false
+
+    /**
+     * A cleanup entry which can be detached until owner-driven cleanup starts executing it.
+     *
+     * Clearing [cleanup] before invoking it makes closing the registration from inside its own
+     * cleanup safe. It also lets an earlier cleanup detach a later snapshot entry while [close]
+     * is already in progress.
+     */
+    private inner class CleanupRegistration(
+        private var cleanup: (() -> Unit)?,
+    ) : AutoCloseable {
+        override fun close() {
+            if (cleanup == null) return
+            cleanup = null
+            cleanupActions.remove(this)
+        }
+
+        fun runFromOwner() {
+            val action = cleanup ?: return
+            cleanup = null
+            action()
+        }
+    }
 
     /*
      * The registry must not hold the component, canary, Lifetime, or Job strongly. Its held value
@@ -63,11 +86,22 @@ internal class Lifetime(
      * leak its resource.
      */
     override fun onClose(cleanup: () -> Unit) {
+        onCloseRemovable(cleanup)
+    }
+
+    /**
+     * Registers [cleanup] and returns a handle which detaches it before this lifetime closes.
+     *
+     * This is deliberately internal: public resource cleanup remains owner-bound, while component
+     * ownership needs to detach an explicitly closed child so the owner does not retain it.
+     */
+    internal fun onCloseRemovable(cleanup: () -> Unit): AutoCloseable {
         if (closed) {
             cleanup()
-        } else {
-            cleanupActions += cleanup
+            return NoOpCloseable
         }
+
+        return CleanupRegistration(cleanup).also(cleanupActions::add)
     }
 
     override fun close() {
@@ -83,7 +117,7 @@ internal class Lifetime(
         var failure: Throwable? = null
         for (action in actions) {
             try {
-                action()
+                action.runFromOwner()
             } catch (exception: Throwable) {
                 if (failure == null) {
                     failure = exception
@@ -94,6 +128,10 @@ internal class Lifetime(
         }
         failure?.let { throw it }
     }
+}
+
+private object NoOpCloseable : AutoCloseable {
+    override fun close() = Unit
 }
 
 /** Cancellation-only fallback used by [lifetimeFinalizationRegistry] and its contract test. */

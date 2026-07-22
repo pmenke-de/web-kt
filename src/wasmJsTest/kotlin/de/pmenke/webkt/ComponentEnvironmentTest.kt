@@ -471,4 +471,32 @@ class ComponentEnvironmentTest {
         root.close()
         assertEquals(1, childDisposals, "persistent child closes exactly once with its parent")
     }
+
+    @Test
+    fun explicitlyClosedPersistentChildDetachesFromItsParentLifetime() {
+        var childDisposals = 0
+
+        class Child(parent: Component) : Component(parent, "detachable-persistent-child") {
+            init {
+                callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
+            }
+
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        class Root : Component(ComponentEnvironment.Empty, "app-root") {
+            val persistentChild = Child(this)
+
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        val root = constructComponent { Root() }
+        document.createTree().run { root.renderTo(this); finalize() }
+
+        root.persistentChild.close()
+        assertEquals(1, childDisposals)
+
+        root.close()
+        assertEquals(1, childDisposals, "parent closure must remain safe after child detachment")
+    }
 }

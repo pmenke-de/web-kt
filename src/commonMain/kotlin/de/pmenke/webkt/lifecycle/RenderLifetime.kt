@@ -44,9 +44,8 @@ internal class RenderLifetime(
     }
 
     /** Makes [component] a child resource of this render. */
-    fun own(component: Component) {
-        lifetime.onClose(component::close)
-    }
+    fun own(component: Component): AutoCloseable =
+        lifetime.onCloseRemovable(component::close)
 
     override fun close() = lifetime.close()
 }
