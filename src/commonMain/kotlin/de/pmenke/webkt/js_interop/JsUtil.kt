@@ -35,6 +35,7 @@ object JsUtil {
         }
     }
 
+    /** Iterates this JavaScript array by index without converting it to a Kotlin collection. */
     inline fun <T : JsAny?> JsArray<T>.forEach(action: (T) -> Unit) {
         for (i in 0 until length) {
             @Suppress("UNCHECKED_CAST")

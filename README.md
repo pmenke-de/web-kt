@@ -2,22 +2,21 @@
 
 # WebKt
 
-WebKt is a small, experimental component framework for Kotlin/Wasm browser applications. It combines
-the type-safe `kotlinx.html` DSL with Koin scopes and coroutine `Flow`s. It is intentionally a focused
-library rather than a complete application platform.
+WebKt is a small, experimental component framework for Kotlin/Wasm browser applications. It combines the
+type-safe `kotlinx.html` DSL with coroutine flows, explicit lifecycle ownership, and optional Koin-assisted
+component resolution. It is a focused library rather than a complete application platform.
 
-WebKt is pre-1.0 software. The two applications in `dist/` are its compatibility fixtures and examples,
-but are not part of the library build.
+WebKt is pre-1.0 software. The two applications in `dist/` are compatibility fixtures and examples, but are
+not part of the library build.
 
 ## What it provides
 
-- A component tree with deterministic per-render child lifecycles.
-- Inline components that update from `Flow`, `StateFlow`, and scope-free observable values.
-- Koin-assisted child construction and component-local coroutine scopes.
-- SPA path/hash navigation built on the browser History API.
-- Route matching with path parameters and accumulated tags.
-- Cached server-data flows, keyed flow caches, form bindings, filtering, and sorting.
-- Small wrappers for browser DOM and JavaScript interop.
+- A component tree with transactional raw-DOM rendering and deterministic lifecycles.
+- DI-neutral component environments plus an optional Koin adapter.
+- Render-owned and persistent child components.
+- Inline components driven by `Flow`, `StateFlow`, or scope-free `ObservableValue` state.
+- Closeable SPA navigation, route matching, cached server data, form bindings, filtering, and sorting.
+- Small wrappers for browser DOM, JavaScript interop, logging, and unverified JWT decoding.
 
 ## Requirements
 
@@ -31,8 +30,8 @@ but are not part of the library build.
 ./gradlew build
 ```
 
-The build compiles the Wasm library and runs common and browser tests. To publish the current snapshot
-for a local consumer:
+The build compiles the Wasm library and runs common and browser tests. To publish the current snapshot for a
+local consumer:
 
 ```shell
 ./gradlew publishToMavenLocal
@@ -60,29 +59,43 @@ kotlin {
 }
 ```
 
-WebKt publishes its public Koin, coroutine, HTML, browser, datetime, and serialization dependencies as
-API dependencies. Consumers do not need to redeclare them merely to use types exposed by WebKt.
+WebKt publishes dependencies exposed by its public API as API dependencies. Consumers do not need to
+redeclare them merely to use WebKt types.
 
-## Minimal application
+## Minimal Koin application
 
-Register components as Koin factories because each position in the component tree needs its own instance:
+Components receive only their environment or parent. Koin remains in the construction adapter:
 
 ```kotlin
+import de.pmenke.webkt.Component
+import de.pmenke.webkt.ComponentEnvironment
+import de.pmenke.webkt.RenderReceiver
+import de.pmenke.webkt.constructComponent
+import de.pmenke.webkt.koin_interop.KoinComponentEnvironment
+import de.pmenke.webkt.koin_interop.getComponent
+import kotlinx.browser.document
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.html.dom.createTree
+import kotlinx.html.h1
+import org.koin.core.context.startKoin
+import org.koin.core.module.dsl.factoryOf
+import org.koin.dsl.module
+import web.events.addHandler
+import web.window.pageHideEvent
+import web.window.window
+
 val appModule = module {
     factoryOf(::Greeting)
-    single<Component>(named("root-component")) {
-        Root(getKoin().createScope<Component>("root-scope"))
-    }
 }
 
-class Root(scope: Scope) : Component(null, scope, "app-root") {
+class App(environment: ComponentEnvironment) : Component(environment, "app-root") {
     override fun RenderReceiver.renderContents() {
         h1 { +"WebKt" }
         render(getComponent<Greeting>())
     }
 }
 
-class Greeting(parent: Component, scope: Scope) : Component(parent, scope, "app-greeting") {
+class Greeting(parent: Component) : Component(parent, "app-greeting") {
     private val name = MutableStateFlow("world")
 
     override fun RenderReceiver.renderContents() {
@@ -91,28 +104,62 @@ class Greeting(parent: Component, scope: Scope) : Component(parent, scope, "app-
 }
 ```
 
-Render and insert the root element:
+Create the root inside a construction transaction, render it, and close the component, its Koin scope, and the
+Koin application during shutdown:
 
 ```kotlin
-val application = startKoin { modules(appModule) }
-val root = application.koin.get<Component>(named("root-component"))
-val element = document.createTree().let { consumer ->
-    root.renderTo(consumer)
-    consumer.finalize()
+fun main() {
+    val application = startKoin { modules(appModule) }
+    val rootScope = application.koin.createScope<Component>("root-scope")
+    val root = constructComponent { App(KoinComponentEnvironment(rootScope)) }
+
+    val element = document.createTree().let { consumer ->
+        root.renderTo(consumer)
+        consumer.finalize()
+    }
+    document.body?.append(element)
+
+    var shutdownStarted = false
+    lateinit var removePageHideListener: () -> Unit
+    fun shutdown() {
+        if (shutdownStarted) return
+        shutdownStarted = true
+        var shutdownFailure: Throwable? = null
+        fun attemptClose(close: () -> Unit) {
+            try {
+                close()
+            } catch (failure: Throwable) {
+                shutdownFailure?.addSuppressed(failure) ?: run { shutdownFailure = failure }
+            }
+        }
+        attemptClose(removePageHideListener)
+        attemptClose(root::close)
+        attemptClose(rootScope::close)
+        attemptClose(application::close)
+        shutdownFailure?.let { throw it }
+    }
+
+    removePageHideListener = window.pageHideEvent.addHandler { event ->
+        if (!event.persisted) shutdown()
+    }
 }
-document.body?.append(element)
 ```
 
 ## Component lifecycle
 
-Every `Component` belongs to the Koin `Scope` passed to its constructor. Closing that scope disposes the
-component. Each render creates a shorter-lived scope for children obtained through
-`RenderReceiver.getComponent`; re-rendering closes the previous render scope and therefore disposes those
-children and cancels their render-scoped coroutines.
+A root `Component(environment, tagName)` has no parent. A child `Component(parent, tagName)` inherits its
+parent's environment while keeping a non-null constructor parameter. Direct construction must use
+`constructComponent { ... }`, which cleans up partially initialized components if construction fails.
 
-Use the protected component `coroutineScope` for work that should live as long as the component. Use the
-`RenderReceiver.coroutineScope` for work created inside `renderContents` that should stop on the next
-render. Register explicit resource cleanup with:
+`RenderReceiver.getComponent<T>()` resolves a render-owned Koin child. Re-rendering closes those children and
+cancels their render-scoped coroutines. `Component.getComponent<T>()` resolves a persistent child owned until
+the parent closes. Persistence describes ownership, not identity caching: resolve the child once into a property
+or `lazy` value and render that same instance. Calling it on every render creates another persistent child.
+Direct `constructComponent { Child(this) }` construction has the same ownership rule. Use the protected
+component `coroutineScope` for work lasting until component closure and `RenderReceiver.coroutineScope` for work
+lasting until the next render.
+
+Register explicit cleanup with:
 
 ```kotlin
 callbacks.subscribe(Component.LifecycleCallbacks.Dispose) {
@@ -120,20 +167,12 @@ callbacks.subscribe(Component.LifecycleCallbacks.Dispose) {
 }
 ```
 
-`Callbacks.notify(key)` propagates the first subscriber failure. Code that must continue notifying the
-remaining subscribers can opt into explicit error handling with
-`Callbacks.notifyCatching(key, onError = { ... })`. The distinct method name prevents a trailing lambda
-on a parameterless notification from being mistaken for a subscription.
+`Callbacks.notify(key)` propagates the first subscriber failure. Use `notifyCatching(key, onError = { ... })`
+when notification must continue after subscriber failures.
 
-`AfterRender` runs after the element has been created or updated. During the first call, the caller may
-not yet have inserted the returned element into the document. Its subscribers run after commit, so a subscriber
-failure is propagated without rolling the committed render back. Cleanup and callback failures are aggregated
-after the remaining component commit actions have been attempted.
-
-Updates are transactional: WebKt builds replacement children off the live element, swaps them in only after
-rendering succeeds, and then closes the previous render lifetime. An unhandled failure keeps the previous DOM
-and lifetime and is surfaced to browser error reporting. A component that is an application update error boundary
-can render fallback contents explicitly:
+Rendering is transactional at each component root. WebKt prepares replacement children away from the live
+element, commits them only after rendering succeeds, and then closes the previous render lifetime. It does not
+diff successful renders. An application update error boundary can render fallback contents explicitly:
 
 ```kotlin
 override fun RenderReceiver.renderFailure(exception: Throwable): Boolean {
@@ -142,9 +181,8 @@ override fun RenderReceiver.renderFailure(exception: Throwable): Boolean {
 }
 ```
 
-The failed update attempt is already cleaned before this hook runs. Returning `false` rethrows the failure.
-Initial render failures always clean up and throw synchronously; they are never offered to this hook. WebKt does
-not diff successful renders and still replaces all children of that component root.
+Initial render failures always clean up and throw synchronously. `AfterRender` runs after commit, so callback
+failure is propagated without rolling committed DOM back.
 
 ## Routing and navigation
 
@@ -159,31 +197,21 @@ val routes = route<String> {
 val selected = routes.enter("/customers/42")
 ```
 
-Route parameters are isolated per branch, so a failed candidate cannot leak values into the selected
-route. Parameter segments must use a non-empty `{name}` form.
+Route parameters are isolated per branch. Parameter segments use a non-empty `{name}` form.
 
 `NavigatorService` exposes `path` and `hash` state flows and respects the document's `<base href>`. It
-intercepts only unmodified, primary-button, same-origin links within that base path. Modified clicks,
-downloads, external targets, and links outside the application remain browser-native. The service owns
-global document and window listeners, so its application owner must call `close()` at shutdown. Closure is
-idempotent; it detaches both listeners. Navigation preserves query strings in browser history while `path`
-remains the application pathname only. After shutdown begins, further `navigateTo` calls fail fast.
-If listener cleanup itself fails, shutdown has still begun: navigation and event handling stay disabled,
-while a later `close()` retries only unfinished cleanup.
+intercepts only ordinary same-origin links within that base path. The application owner must call `close()` at
+shutdown to remove its document and window listeners. Closure is idempotent; navigation after shutdown begins
+fails fast.
 
 ## Observable values
 
-`ObservableValue<T>` represents derived UI state that reads synchronously through `value` and can be
-observed lazily through `updates`. Creating or reading one does not launch a coroutine; collection begins
-only when a caller with a suitable lifetime collects `updates`.
+`ObservableValue<T>` provides synchronous `value` access and a cold `updates` flow. Creating or reading one
+does not launch a coroutine; collection starts only in the caller's scope.
 
 ```kotlin
-import de.pmenke.webkt.util.asObservableValue
-import de.pmenke.webkt.util.combineValues
-import de.pmenke.webkt.util.mapValue
-
 val displayName = user.asObservableValue().mapValue { it.name }
-val combined = firstName.asObservableValue().combineValues(
+val fullName = firstName.asObservableValue().combineValues(
     lastName.asObservableValue(),
 ) { first, last -> "$first $last" }
 
@@ -191,20 +219,16 @@ val currentName = displayName.value
 displayName.updates.onEach(::showName).launchIn(ownerScope)
 ```
 
-`mapValue`, `flatMapLatestValue`, fixed-arity `combineValues`, and iterable `combineValues` retain
-synchronous access without `stateIn`. Every update collector receives the current value first and then
-distinct changes. Mapping functions should be pure; they run when the input snapshot changes, while equal
-snapshots reuse the same derived result across direct reads and collectors. `inlineFlowComponent` owns
-collection in its current render lifetime:
+`mapValue`, `flatMapLatestValue`, fixed-arity `combineValues`, and iterable `combineValues` retain synchronous
+access without `stateIn`. `inlineFlowComponent` owns collection in the current render lifetime:
 
 ```kotlin
 inlineFlowComponent("app-name", displayName) { name -> +name }
 ```
 
-The older `StateFlowUtil` mapping and combination helpers remain as deprecated source adapters. They now
-return `ObservableValue`, so use `.updates` when passing their result to ordinary Flow operators.
-
 ## Cached server data
+
+`CachingFlow` composes a `values` stream with explicit cache operations; it is not itself a `Flow`:
 
 ```kotlin
 val mutableUsers = MutableCachingFlow(
@@ -212,15 +236,15 @@ val mutableUsers = MutableCachingFlow(
     validity = 10.minutes,
 )
 val users: CachingFlow<Result<List<User>>> = mutableUsers.asCachingFlow()
+
+users.values.onEach(::showUsers).launchIn(ownerScope)
 ```
 
-A caching flow replays only its current value. The first subscriber refreshes an empty or expired cache;
-concurrent automatic refresh checks are serialized. A cached `Result.failure` is retried for the next
-subscriber. `clear()` invalidates without fetching, while `refresh()` fetches immediately.
+The stream replays one current value. Its first subscriber refreshes an empty or expired cache; concurrent
+automatic refresh checks are serialized. `clear()` invalidates without fetching, while `refresh()` fetches
+immediately.
 
-Use `MutableCachingFlowMap` for keyed resources. `keepAlive` controls how long the map keeps a strong
-reference to an otherwise unused entry; zero uses weak entries immediately and infinity keeps them for the
-map's lifetime. A finite, non-zero keep-alive needs an explicitly owned coroutine scope:
+For keyed resources, finite non-zero keep-alive maintenance needs an explicitly owned scope:
 
 ```kotlin
 val cacheOwner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -232,17 +256,12 @@ val usersById = MutableCachingFlowMap(
 )
 
 // During owner shutdown:
-usersById.close() // cancels only this map's maintenance and releases its entries
+usersById.close()
 cacheOwner.cancel()
 ```
 
-The supplied scope must contain a `Job`. For finite keep-alive, cancelling it stops maintenance and closes the
-map. Maintenance runs under a cache-private supervisor: a maintenance failure closes that cache without
-cancelling the caller's job or sibling work, and closing the map likewise never cancels the caller's scope.
-`close()` is idempotent, and map operations (including previously obtained read-only views) fail fast afterward.
-The scope-free constructor remains valid for zero and infinite keep-alive modes. Those modes start no
-maintenance coroutine, receive no owner-cancellation callback, and therefore still require explicit `close()`
-for deterministic entry release.
+Zero and infinite keep-alive modes start no maintenance coroutine but still need explicit `close()` for
+deterministic entry release. Closing a map never cancels its caller-owned scope.
 
 ## Form values
 
@@ -252,16 +271,14 @@ for deterministic entry release.
 val name = ControlValue("")
 inputElement.bind(name)
 
-name.value = "Ada"          // updates the DOM and marks the value dirty
-name.valueState.collect { } // observes DOM and Kotlin changes
-name.unbind()                // removes listeners and releases the element
+name.value = "Ada"
+name.valueState.collect { }
+name.unbind()
 ```
 
-Bindings track `dirty` and `touched` state. Rebinding automatically removes the previous listeners.
+Bindings track `dirty` and `touched` state. Rebinding removes the previous listeners.
 
 ## Logging
-
-Logging is disabled until a matching name prefix or aspect is configured:
 
 ```kotlin
 LoggingConfig.setLevel("de.example", LogLevel.INFO)
@@ -271,12 +288,10 @@ private val LOG = Logger("de.example.CustomerService")
 LOG.info { "loaded customer" }
 ```
 
-`LoggingConfig.clear()` resets global logging configuration, which is useful between tests or applications
-sharing the same page.
+Logging is disabled until a matching name prefix or aspect is configured. `LoggingConfig.clear()` resets the
+global configuration.
 
 ## JWT safety
-
-Decode compact tokens with an API whose trust level is visible at the call site:
 
 ```kotlin
 val token = UnverifiedJwt.decode(compactJwt)
@@ -284,26 +299,20 @@ val claimedSubject = token.subject
 val encodedThirdSegment = token.signatureSegment
 ```
 
-This performs Base64URL, strict UTF-8, and JSON decoding only. `UnverifiedJwt`, `UnverifiedJwtHeader`, and
-`UnverifiedJwtClaims` contain attacker-controlled data: they do not validate signatures, algorithms,
-issuers, audiences, expiry, or any other trust property. Use a security-reviewed verifier before treating
-token content as authentic or making authorization decisions. The `audiences` property supports both the
-standards-compliant string and array representations.
+Decoding performs Base64URL, strict UTF-8, and JSON decoding only. It does not validate signatures,
+algorithms, issuers, audiences, expiry, or any other trust property. Use a security-reviewed verifier before
+treating token content as authentic or making authorization decisions.
 
 ## Documentation
 
 - [Architecture and lifecycle](docs/architecture.md)
-- [Downstream compatibility and migration notes](docs/downstream-compatibility.md)
 
-Public APIs also carry KDoc next to their implementation. The repository intentionally keeps documentation
-close to the behavior it describes.
+Public APIs also carry KDoc next to their implementation.
 
-## Status and compatibility
+## Status
 
-WebKt uses semantic-version-shaped coordinates but has not reached a stable API. Before 1.0, incompatible
-changes may occur when they fix lifecycle or correctness defects. Such changes must be recorded in the
-downstream compatibility document. The current version remains source-compatible with the two checked-in
-consumers; identified consumer-side issues are documented rather than edited.
+WebKt has not reached a stable 1.0 API. Incompatible changes may still occur when they improve correctness,
+lifecycle ownership, or the clarity of the public surface.
 
 ## License
 

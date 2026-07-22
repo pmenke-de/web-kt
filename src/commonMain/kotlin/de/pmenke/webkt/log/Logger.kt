@@ -19,6 +19,7 @@ class Logger(
 ) {
     private val printName: String = name.abbreviateLoggerName()
 
+    /** Logs eager [args] at [LogLevel.DEBUG] when [aspect] or this logger's name is enabled. */
     fun debug(vararg args: Any?, aspect: LoggingAspect? = null) {
         ifDebugEnabled {
             if (!shouldLog(LogLevel.DEBUG, aspect)) return
@@ -26,6 +27,7 @@ class Logger(
         }
     }
 
+    /** Builds and logs a debug message lazily, followed by [args], when its filter is enabled. */
     inline fun debug(aspect: LoggingAspect? = null, vararg args: Any?, messageBuilder: () -> String) {
         ifDebugEnabled {
             if (!shouldLog(LogLevel.DEBUG, aspect)) return
@@ -33,31 +35,37 @@ class Logger(
         }
     }
 
+    /** Logs eager [args] at [LogLevel.INFO] when [aspect] or this logger's name is enabled. */
     fun info(vararg args: Any?, aspect: LoggingAspect? = null) {
         if (!shouldLog(LogLevel.INFO, aspect)) return
         log(LogLevel.INFO, *args)
     }
 
+    /** Builds and logs an informational message lazily when its filter is enabled. */
     fun info(aspect: LoggingAspect? = null, messageBuilder: () -> String) {
         if (!shouldLog(LogLevel.INFO, aspect)) return
         log(LogLevel.INFO, messageBuilder())
     }
 
+    /** Logs eager [args] at [LogLevel.WARN] when [aspect] or this logger's name is enabled. */
     fun warn(vararg args: Any?, aspect: LoggingAspect? = null) {
         if (!shouldLog(LogLevel.WARN, aspect)) return
         log(LogLevel.WARN, *args)
     }
 
+    /** Builds and logs a warning lazily when its filter is enabled. */
     fun warn(aspect: LoggingAspect? = null, messageBuilder: () -> String) {
         if (!shouldLog(LogLevel.WARN, aspect)) return
         log(LogLevel.WARN, messageBuilder())
     }
 
+    /** Logs eager [args] at [LogLevel.ERROR] when [aspect] or this logger's name is enabled. */
     fun error(vararg args: Any?, aspect: LoggingAspect? = null) {
         if (!shouldLog(LogLevel.ERROR, aspect)) return
         log(LogLevel.ERROR, *args)
     }
 
+    /** Builds and logs an error message lazily when its filter is enabled. */
     fun error(aspect: LoggingAspect? = null, messageBuilder: () -> String) {
         if (!shouldLog(LogLevel.ERROR, aspect)) return
         log(LogLevel.ERROR, messageBuilder())
@@ -102,10 +110,12 @@ object LoggingConfig {
     internal val levels = PrefixMap<LogLevel>()
     internal val aspectLevels: MutableMap<LoggingAspect, LogLevel> = mutableMapOf()
 
+    /** Enables [level] and more severe messages for the longest matching logger-name prefix [name]. */
     fun setLevel(name: String, level: LogLevel) {
         levels.insert(name, level)
     }
 
+    /** Enables [level] and more severe messages carrying [aspect], independently of logger name. */
     fun setAspectLevel(aspect: LoggingAspect, level: LogLevel) {
         aspectLevels[aspect] = level
     }

@@ -156,6 +156,10 @@ abstract class Component private constructor(
     // remember if we have an animationFrame-request pending, to avoid concurrent requests
     private var animationRequest: Int? = null
 
+    /**
+     * This component's callback registry, including [LifecycleCallbacks] and application-defined events.
+     * All subscriptions are cleared when the component closes.
+     */
     val callbacks = Callbacks()
 
     init {

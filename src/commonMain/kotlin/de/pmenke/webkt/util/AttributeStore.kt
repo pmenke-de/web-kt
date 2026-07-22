@@ -5,24 +5,32 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * A store for attributes identified by keys of type [AttributeKey].
- * Intended to be used with singleton-object keys:
+ * Keep each key in one stable property so its reference identity is reused:
  * ```
- * var MyKey : AttributeKey<String>("my-key")
+ * val MyKey = AttributeKey<String>("my-key")
  * val store: AttributeStore = ...
  * store[MyKey] = "value"
  * ```
  */
 interface AttributeStore {
+    /** Returns the value associated with the exact [key] instance, or `null` when none is visible. */
     operator fun <T> get(key: AttributeKey<T>): T?
+
+    /** Associates [value] with the exact [key] instance; `null` remains a stored value when supported. */
     operator fun <T> set(key: AttributeKey<T>, value: T?)
 
+    /** Returns the value for [key], or throws when the key is absent or resolves to `null`. */
     fun <T> require(key: AttributeKey<T>): T {
         return get(key) ?: throw NoSuchElementException("No value for key ${key.name} / ${key::class}")
     }
 }
 
 // NOTE: must not be a data class, as we want reference equality only
-/** Type-safe identity key for [AttributeStore]. Keys use reference identity. */
+/**
+ * Type-safe identity key for [AttributeStore].
+ *
+ * Two keys with the same [name] remain distinct; [name] is used only for diagnostics.
+ */
 /* non-data */ class AttributeKey<T>(val name: String)
 
 /**
