@@ -21,19 +21,6 @@ data class UnverifiedJwt(
     /** The third compact-serialization segment, without decoding or verification. */
     val signatureSegment: String,
 ) {
-    /**
-     * Compatibility name for [signatureSegment].
-     *
-     * The value is merely the encoded third segment; exposing it does not mean that a signature exists
-     * or that any signature has been verified.
-     */
-    @Deprecated(
-        message = "This is an unverified compact segment, not a verified signature; use signatureSegment.",
-        replaceWith = ReplaceWith("signatureSegment"),
-    )
-    val signature: String
-        get() = signatureSegment
-
     companion object {
         private val json = Json { ignoreUnknownKeys = true }
 
@@ -62,16 +49,6 @@ data class UnverifiedJwt(
                 throw IllegalArgumentException("Invalid JWT content", exception)
             }
         }
-
-        /** Compatibility adapter for [decode]. */
-        @Deprecated(
-            message = "fromString only decodes an unverified token; use UnverifiedJwt.decode.",
-            replaceWith = ReplaceWith(
-                "UnverifiedJwt.decode(jwt)",
-                "de.pmenke.webkt.util.UnverifiedJwt",
-            ),
-        )
-        fun fromString(jwt: String): UnverifiedJwt = decode(jwt)
     }
 }
 
@@ -256,29 +233,6 @@ private fun saturatedAdd(left: Long, right: Long): Long = when {
 private const val MAX_WHOLE_SECOND_DIGITS = 19L
 private const val NANOSECOND_DIGITS = 9
 private const val NANOSECONDS_PER_SECOND = 1_000_000_000
-
-/**
- * Compatibility alias for [UnverifiedJwt]. This decoder has never authenticated tokens.
- */
-@Deprecated(
-    message = "JWT is decoded but unverified; use UnverifiedJwt and verify it separately.",
-    replaceWith = ReplaceWith("UnverifiedJwt", "de.pmenke.webkt.util.UnverifiedJwt"),
-)
-typealias JWT = UnverifiedJwt
-
-/** Compatibility alias for the attacker-controlled [UnverifiedJwtHeader]. */
-@Deprecated(
-    message = "Header values are unverified; use UnverifiedJwtHeader.",
-    replaceWith = ReplaceWith("UnverifiedJwtHeader", "de.pmenke.webkt.util.UnverifiedJwtHeader"),
-)
-typealias Header = UnverifiedJwtHeader
-
-/** Compatibility alias for the attacker-controlled [UnverifiedJwtClaims]. */
-@Deprecated(
-    message = "Claims are unverified; use UnverifiedJwtClaims.",
-    replaceWith = ReplaceWith("UnverifiedJwtClaims", "de.pmenke.webkt.util.UnverifiedJwtClaims"),
-)
-typealias Claims = UnverifiedJwtClaims
 
 /**
  * The "iss" (issuer) claim identifies the principal that issued the JWT. The processing of this

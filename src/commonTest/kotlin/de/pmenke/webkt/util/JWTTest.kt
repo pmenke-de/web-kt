@@ -28,18 +28,6 @@ class JWTTest {
         assertEquals("encoded-signature", jwt.signatureSegment)
     }
 
-    @Suppress("DEPRECATION")
-    @Test
-    fun legacyAliasesAndDecoderRemainSourceCompatible() {
-        val jwt: JWT = JWT.fromString(compactToken("""{"alg":"none"}""", "{}", "legacy"))
-        val header: Header = jwt.header
-        val claims: Claims = jwt.claims
-        val reconstructed: JWT = JWT(header, claims, jwt.signature)
-
-        assertEquals("none", reconstructed.header.alg)
-        assertEquals("legacy", reconstructed.signature)
-    }
-
     @Test
     fun missingAndNonStringOptionalClaimsAreReportedAsAbsent() {
         val jwt = token(

@@ -43,20 +43,6 @@ class Callbacks {
         }
     }
 
-    /**
-     * Compatibility adapter for payload notifications that previously supplied an optional error handler.
-     * Prefer [notify] when failures should propagate or [notifyCatching] for explicit error handling.
-     */
-    @Deprecated(
-        message = "Use notify(key, payload) or notifyCatching(key, payload, onError)",
-        replaceWith = ReplaceWith(
-            "if (errorHandler == null) notify(key, payload) else notifyCatching(key, payload, errorHandler)",
-        ),
-    )
-    fun <T> notify(key: CallbackKey<T>, payload: T, errorHandler: ((Throwable) -> Unit)?) {
-        if (errorHandler == null) notify(key, payload) else notifyCatching(key, payload, errorHandler)
-    }
-
     /** Notifies all callbacks registered under the given parameterless [key]. */
     fun notify(key: CallbackKey<Unit>) = notify(key, Unit)
 

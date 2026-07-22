@@ -74,22 +74,4 @@ class CallbacksTest {
         assertEquals(listOf("handled"), calls)
         assertEquals(listOf<String?>("handled", "second:handled"), failures)
     }
-
-    @Suppress("DEPRECATION")
-    @Test
-    fun legacyPayloadErrorHandlerDelegatesToTheExplicitBehaviors() {
-        val callbacks = Callbacks()
-        val key = CallbackKey<String>("event")
-        val failures = mutableListOf<String?>()
-
-        callbacks.subscribe(key) { throw IllegalStateException(it) }
-
-        callbacks.notify(key, "handled") { failures += it.message }
-        val propagated = assertFailsWith<IllegalStateException> {
-            callbacks.notify(key, "propagated", null)
-        }
-
-        assertEquals(listOf<String?>("handled"), failures)
-        assertEquals("propagated", propagated.message)
-    }
 }
