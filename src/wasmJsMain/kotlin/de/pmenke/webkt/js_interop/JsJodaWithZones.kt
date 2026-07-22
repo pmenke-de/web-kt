@@ -4,6 +4,6 @@ package de.pmenke.webkt.js_interop
 // which is needed to kotlinx-datetime work with the js-joda-timezone module
 
 @JsModule("@js-joda/timezone")
-external object JsJodaTimeZoneModule
+private external object JsJodaTimeZoneModule
 
 private val jsJodaTz = JsJodaTimeZoneModule

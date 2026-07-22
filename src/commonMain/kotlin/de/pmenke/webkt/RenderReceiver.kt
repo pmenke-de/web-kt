@@ -141,7 +141,7 @@ internal class InlineComponent(
 }
 
 @Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE", "UNCHECKED_CAST", "CAST_NEVER_SUCCEEDS")
-var HTMLElement.componentKt: Component?
+internal var HTMLElement.componentKt: Component?
     get() = ((this as JsObject)["component_kt"] as JsReference<Component>?)?.get()
     set(value) {
         (this as JsObject)["component_kt"] = value?.toJsReference()

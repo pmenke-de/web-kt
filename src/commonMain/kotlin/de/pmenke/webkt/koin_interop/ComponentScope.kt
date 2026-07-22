@@ -19,7 +19,7 @@ private val LOG = Logger("de.pmenke.webkt.koin_interop.ComponentScope")
  * The scope closes explicitly on the next render and defensively through a JavaScript
  * finalization registry if the owning component becomes unreachable first.
  */
-class ComponentScope private constructor(
+internal class ComponentScope private constructor(
     component: Component,
 ) {
     private val componentRef = WeakReference(component)

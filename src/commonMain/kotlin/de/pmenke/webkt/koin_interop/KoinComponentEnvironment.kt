@@ -13,7 +13,7 @@ import org.koin.core.scope.ScopeCallback
  * Adapts a caller-owned Koin [scope] to WebKt's DI-neutral [ComponentEnvironment].
  *
  * Components inherit this environment without receiving a Koin scope in their constructors.
- * Every render still receives a fresh child-resolution scope through [KoinRenderEnvironment].
+ * Every render receives a fresh child-resolution scope through the internal render environment.
  */
 class KoinComponentEnvironment(val scope: Scope) : ComponentEnvironment {
     override fun attachComponent(component: Component, lifetime: ResourceLifetime) {
@@ -41,13 +41,13 @@ class KoinComponentEnvironment(val scope: Scope) : ComponentEnvironment {
 }
 
 /** Koin resource owned by one component render attempt. */
-class KoinRenderEnvironment internal constructor(
+internal class KoinRenderEnvironment(
     component: Component,
     lifetime: ResourceLifetime,
     parentScope: Scope,
 ) : RenderEnvironment {
     /** Fresh scope used to resolve children belonging to this render. */
-    val scope: Scope = ComponentScope.create(
+    internal val scope: Scope = ComponentScope.create(
         component,
         component.finalizationCanary,
         parentScope = parentScope,

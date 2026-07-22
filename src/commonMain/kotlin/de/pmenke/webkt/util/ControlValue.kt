@@ -30,8 +30,8 @@ class ControlValue<T: Any?>(initialValue: T) {
     constructor(eventTarget: EventTarget, property: KMutableProperty0<T>, event: String = "input")
             : this(eventTarget.asInternal(), property, event)
 
-    /** Creates a value initialized from and immediately bound to an abstract event target. */
-    constructor(eventTarget: EventTargetInternal, property: KMutableProperty0<T>, event: String = "input") : this(property.get()) {
+    /** Creates a value initialized from and immediately bound to an internal event target. */
+    internal constructor(eventTarget: EventTargetInternal, property: KMutableProperty0<T>, event: String = "input") : this(property.get()) {
         bind(eventTarget, property, event)
     }
 
@@ -96,8 +96,8 @@ class ControlValue<T: Any?>(initialValue: T) {
         bind(eventTarget.asInternal(), property, event)
     }
 
-    /** Binds this value to an abstract event target, replacing any previous binding. */
-    fun bind(eventTarget: EventTargetInternal, property: KMutableProperty0<T>, event: String = "input") {
+    /** Binds this value to an internal event target, replacing any previous binding. */
+    internal fun bind(eventTarget: EventTargetInternal, property: KMutableProperty0<T>, event: String = "input") {
         unbind()
 
         currentTarget = eventTarget
@@ -161,19 +161,15 @@ fun <T, R: Any> HTMLInputElement.bind(controlValue: ControlValue<T>,
     controlValue.bind(this, mapper::value)
 }
 
-/**
- * internal excerpt of the (external) EventTarget interface,
- * so that we can implement ourselves for special-cases like radio buttons
- */
-/** Minimal event-target abstraction used to support both DOM controls and radio groups. */
-interface EventTargetInternal {
+/** Minimal event-target abstraction used internally for both DOM controls and radio groups. */
+internal interface EventTargetInternal {
     fun addEventListener(type: String, listener: ((Event) -> Unit)?)
     fun removeEventListener(type: String, listener: ((Event) -> Unit)?)
     fun dispatchChangeEvent(event: Event)
 }
 
 /** Adapts a browser [EventTarget] to the binding abstraction used by [ControlValue]. */
-fun EventTarget.asInternal(): EventTargetInternal = object : EventTargetInternal {
+internal fun EventTarget.asInternal(): EventTargetInternal = object : EventTargetInternal {
     override fun addEventListener(type: String, listener: ((Event) -> Unit)?) {
         this@asInternal.addEventListener(type, listener)
     }

@@ -96,7 +96,11 @@ class Callbacks {
 fun CallbackKey(name: String) = CallbackKey<Unit>(name)
 
 /** Idempotent subscription handle returned by [Callbacks.subscribe]. */
-class CallbackHandle(private val registry: Callbacks, internal val key: CallbackKey<*>, internal val id: CallbackId) {
+class CallbackHandle internal constructor(
+    private val registry: Callbacks,
+    internal val key: CallbackKey<*>,
+    internal val id: CallbackId,
+) {
     private var subscribed = true
 
     /**
