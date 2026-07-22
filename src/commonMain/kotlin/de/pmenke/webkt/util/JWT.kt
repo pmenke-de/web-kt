@@ -2,18 +2,15 @@ package de.pmenke.webkt.util
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 import kotlin.io.encoding.Base64
-import kotlin.let
-import kotlin.text.decodeToString
-import kotlin.text.split
 import kotlin.time.Instant
 
 /**
  * A parsed JSON Web Token (JWT).
- * Doesn't support encrypted JWTs (JWE) and doesn't validate the signature.
+ *
+ * This type only decodes the token. It does not validate the signature, issuer, audience, expiry,
+ * or any other security property and must not be used as proof that a token is trustworthy.
+ * Encrypted JWTs (JWE) are not supported.
  */
 data class JWT(
     val header: Header,
@@ -21,20 +18,27 @@ data class JWT(
     val signature: String,
 ) {
     companion object {
+        private val json = Json { ignoreUnknownKeys = true }
+
         /**
-         * Parses a JWT from its string representation.
+         * Parses an unencrypted, compact JWT from its string representation.
+         *
+         * @throws IllegalArgumentException if the token does not have three compact parts or its
+         * Base64URL/JSON content cannot be decoded.
          */
         fun fromString(jwt: String): JWT {
             val parts = jwt.split('.')
             if (parts.size != 3) {
                 throw IllegalArgumentException("Invalid JWT format")
             }
-            val b64 = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
-            val header = Json.decodeFromString<Header>(b64.decode(parts[0]).decodeToString())
-            val claims = Json.decodeFromString<JsonObject>(b64.decode(parts[1]).decodeToString())
-            val signature = parts[2]
-
-            return JWT(header, Claims(claims), signature)
+            return try {
+                val b64 = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
+                val header = json.decodeFromString<Header>(b64.decode(parts[0]).decodeToString())
+                val claims = json.decodeFromString<JsonObject>(b64.decode(parts[1]).decodeToString())
+                JWT(header, Claims(claims), parts[2])
+            } catch (exception: Exception) {
+                throw IllegalArgumentException("Invalid JWT content", exception)
+            }
         }
     }
 }
@@ -42,18 +46,29 @@ data class JWT(
 @Serializable
 data class Header(
     val alg: String,
-    val typ: String,
+    val typ: String? = null,
     val kid: String? = null,
 )
 
+/** Read-only access to a JWT claims JSON object. */
 class Claims(private val content: JsonObject) {
+    /** Returns the raw JSON value for [key], or `null` when the claim is absent. */
     operator fun get(key: String) = content[key]
 
+    /** Returns a string claim or `null` when it is absent or not a JSON string. */
     fun getStringOrNull(key: String): String? =
-        content[key]?.jsonPrimitive?.contentOrNull
+        (content[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
+    /** Returns a NumericDate claim as an [Instant], or `null` when absent or invalid. */
     fun getInstantOrNull(key: String): Instant? =
-        content[key]?.jsonPrimitive?.longOrNull?.let { Instant.fromEpochSeconds(it) }
+        (content[key] as? JsonPrimitive)?.longOrNull?.let { Instant.fromEpochSeconds(it) }
+
+    /** Returns a claim encoded as either one string or an array of strings. */
+    fun getStringListOrEmpty(key: String): List<String> = when (val value = content[key]) {
+        is JsonPrimitive -> value.takeIf { it.isString }?.contentOrNull?.let(::listOf).orEmpty()
+        is JsonArray -> value.mapNotNull { (it as? JsonPrimitive)?.takeIf { item -> item.isString }?.contentOrNull }
+        else -> emptyList()
+    }
 }
 
 /**
@@ -102,7 +117,15 @@ val JWT.audience: String?
     get() = claims.audience
 
 val Claims.audience: String?
-    get() = getStringOrNull("aud")
+    get() = audiences.firstOrNull()
+
+/** All values from the JWT `aud` claim, supporting both its string and array representations. */
+val JWT.audiences: List<String>
+    get() = claims.audiences
+
+/** All values from the `aud` claim, supporting both its string and array representations. */
+val Claims.audiences: List<String>
+    get() = getStringListOrEmpty("aud")
 
 /**
  * The "exp" (expiration time) claim identifies the expiration time on or after which the JWT MUST
@@ -164,4 +187,4 @@ val JWT.id: String?
     get() = claims.id
 
 val Claims.id: String?
-    get() = get("jti")?.jsonPrimitive?.contentOrNull
+    get() = getStringOrNull("jti")

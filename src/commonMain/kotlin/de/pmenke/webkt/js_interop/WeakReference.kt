@@ -10,6 +10,9 @@ private external class WeakRef(target: JsAny) {
  */
 // Kotlin wrapper with a type parameter
 class WeakReference<T : Any> private constructor(private val ref: WeakRef) {
+    /** Creates a weak reference to [target]. */
     constructor(target: T): this(WeakRef(target.toJsReference()))
+
+    /** Returns the target while it is still reachable, otherwise `null`. */
     fun deref(): T? = ref.deref()?.unsafeCast<JsReference<T>>()?.get()
 }

@@ -42,6 +42,7 @@ object JsUtil {
         }
     }
 
+    /** Iterates the non-Kotlin [ItemArrayLike] browser collection by index. */
     inline fun <T: JsAny?> ItemArrayLike<T>.forEach(action: (T) -> Unit) {
         for (i in 0 until length) {
             @Suppress("UNCHECKED_CAST")
@@ -49,12 +50,14 @@ object JsUtil {
         }
     }
 
+    /** Exposes an [ItemArrayLike] browser collection as a lazy Kotlin sequence. */
     fun <T: JsAny?> ItemArrayLike<T>.asSequence() = sequence {
         forEach { yield(it) }
     }
 
     private val base64Url = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
+    /** Encodes this typed array as unpadded Base64URL. */
     fun Uint8Array<*>.toBase64Url(): String {
         // would be nice to use `toBase64`, but that's not widely supported in JS (only Firefox and Safari atm)
         val bytes = ByteArray(length) { index -> this[index].toKotlinByte() }

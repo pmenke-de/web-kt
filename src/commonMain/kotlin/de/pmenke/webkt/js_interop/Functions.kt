@@ -8,10 +8,15 @@ import js.function.JsFunction
  * This is needed in some places; e.g. when JS libraries expect callback functions inside a config object.
  */
 object Functions {
+    /** Wraps a zero-argument Kotlin lambda as a JavaScript function. */
     fun <T: JsAny?> function0(block: ()->T): JsFunction<Tuple, T> = jsFunction0(block)
+    /** Wraps a one-argument Kotlin lambda as a JavaScript function. */
     fun <A: JsAny?, T: JsAny?> function1(block: (A)->T): JsFunction<Tuple, T> = jsFunction1(block)
+    /** Wraps a two-argument Kotlin lambda as a JavaScript function. */
     fun <A: JsAny?, B: JsAny?, T: JsAny?> function2(block: (A, B)->T): JsFunction<Tuple, T> = jsFunction2(block)
+    /** Wraps a three-argument Kotlin lambda as a JavaScript function. */
     fun <A: JsAny?, B: JsAny?, C: JsAny?, T: JsAny?> function3(block: (A, B, C)->T): JsFunction<Tuple, T> = jsFunction3(block)
+    /** Wraps a four-argument Kotlin lambda as a JavaScript function. */
     fun <A: JsAny?, B: JsAny?, C: JsAny?, D: JsAny?, T: JsAny?> function4(block: (A, B, C, D)->T): JsFunction<Tuple, T> = jsFunction4(block)
 }
 
