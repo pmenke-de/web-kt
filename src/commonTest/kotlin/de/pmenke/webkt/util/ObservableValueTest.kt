@@ -1,7 +1,5 @@
 package de.pmenke.webkt.util
 
-import de.pmenke.webkt.util.StateFlowUtil.mapState
-import de.pmenke.webkt.util.StateFlowUtil.times
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asPromise
@@ -260,56 +258,6 @@ class ObservableValueTest {
             assertEquals(listOf("ABCD", "AB3D"), collected)
             job.cancel()
         }.asPromise()
-
-    @Suppress("DEPRECATION")
-    @Test
-    fun legacyOperatorsReturnObservableValues(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
-        val first = MutableStateFlow("A")
-        val second = MutableStateFlow("B")
-        val third = MutableStateFlow("C")
-        val combined = first * second * third
-        val mapped = first.mapState { it.lowercase() }
-        val collected = mutableListOf<Triple<String, String, String>>()
-        val job = launch { combined.updates.collect { collected += it } }
-
-        delay(10)
-        second.value = "2"
-        delay(10)
-
-        assertEquals("a", mapped.value)
-        assertEquals(Triple("A", "2", "C"), combined.value)
-        assertEquals(listOf(Triple("A", "B", "C"), Triple("A", "2", "C")), collected)
-        job.cancel()
-    }.asPromise()
-
-    @Suppress("DEPRECATION")
-    @Test
-    fun legacyTimesOverloadsPreserveFlatTupleShapes() {
-        val first = MutableStateFlow("A")
-        val second = MutableStateFlow(2)
-        val third = MutableStateFlow(true)
-        val fourth = MutableStateFlow(4L)
-        val fifth = MutableStateFlow('E')
-
-        val genericObservablePair: ObservableValue<Pair<Int, Int>> =
-            first.asObservableValue().mapValue { it.length } * second
-        val chainedTriple: ObservableValue<Triple<String, Int, Boolean>> = first * second * third
-        val observablePairTriple: ObservableValue<Triple<String, Int, Boolean>> =
-            MutableStateFlow("A" to 2).asObservableValue() * third
-        val statePairTriple: ObservableValue<Triple<String, Int, Boolean>> =
-            MutableStateFlow("A" to 2) * third
-        val stateTripleFour: ObservableValue<Tuple4<String, Int, Boolean, Long>> =
-            MutableStateFlow(Triple("A", 2, true)) * fourth
-        val stateTupleFive: ObservableValue<Tuple5<String, Int, Boolean, Long, Char>> =
-            MutableStateFlow(Tuple4("A", 2, true, 4L)) * fifth
-
-        assertEquals(1 to 2, genericObservablePair.value)
-        assertEquals(Triple("A", 2, true), chainedTriple.value)
-        assertEquals(Triple("A", 2, true), observablePairTriple.value)
-        assertEquals(Triple("A", 2, true), statePairTriple.value)
-        assertEquals(Tuple4("A", 2, true, 4L), stateTripleFour.value)
-        assertEquals(Tuple5("A", 2, true, 4L, 'E'), stateTupleFive.value)
-    }
 
     @Test
     fun filterControlsTrackDynamicElementsWithoutOwningAScope(): Promise<JsAny?> =
