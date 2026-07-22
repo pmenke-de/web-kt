@@ -1,0 +1,42 @@
+package de.pmenke.webkt.util
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class CallbacksTest {
+    @Test
+    fun changesDuringNotificationApplyToTheNextNotification() {
+        val callbacks = Callbacks()
+        val key = CallbackKey<String>("event")
+        val calls = mutableListOf<String>()
+        lateinit var secondHandle: CallbackHandle
+
+        callbacks.subscribe(key) { calls += "first:$it"; secondHandle.unsubscribe() }
+        secondHandle = callbacks.subscribe(key) { calls += "second:$it" }
+
+        callbacks.notify(key, "one")
+        callbacks.notify(key, "two")
+
+        assertEquals(listOf("first:one", "second:one", "first:two"), calls)
+    }
+
+    @Test
+    fun nestedNotificationsAreSafe() {
+        val callbacks = Callbacks()
+        val key = CallbackKey("event")
+        val calls = mutableListOf<String>()
+        var nested = false
+
+        callbacks.subscribe(key) {
+            calls += if (nested) "nested" else "outer"
+            if (!nested) {
+                nested = true
+                callbacks.notify(key)
+            }
+        }
+
+        callbacks.notify(key)
+
+        assertEquals(listOf("outer", "nested"), calls)
+    }
+}

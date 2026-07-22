@@ -22,13 +22,15 @@ interface AttributeStore {
 }
 
 // NOTE: must not be a data class, as we want reference equality only
+/** Type-safe identity key for [AttributeStore]. Keys use reference identity. */
 /* non-data */ class AttributeKey<T>(val name: String)
 
 /**
  * An [AttributeStore] that supports hierarchical attribute lookup through an optional parent store.
  * If an attribute is not found in the current store, the parent store (if any) is queried.
  *
- * Modifications to attributes in this store do not affect the parent store, but can shadow them.
+ * Modifications to attributes in this store do not affect the parent store. A local value, including
+ * an explicit `null`, shadows the parent until [setInherited] is called.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class HierarchicalAttributeStore(
@@ -39,8 +41,13 @@ class HierarchicalAttributeStore(
     private var attributes: AtomicReference<MutableMap<AttributeKey<*>, Any?>?> = AtomicReference(null)
 
     override fun <T> get(key: AttributeKey<T>): T? {
+        val localAttributes = attributes.load()
         @Suppress("UNCHECKED_CAST")
-        return (attributes.load()?.get(key) as T?) ?: parent?.get(key)
+        return if (localAttributes?.containsKey(key) == true) {
+            localAttributes[key] as T?
+        } else {
+            parent?.get(key)
+        }
     }
 
     override fun <T> set(key: AttributeKey<T>, value: T?) {

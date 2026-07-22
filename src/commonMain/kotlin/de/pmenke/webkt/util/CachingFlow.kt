@@ -5,11 +5,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.flow.onSubscription
-import kotlinx.coroutines.launch
-import kotlin.also
-import kotlin.collections.forEach
-import kotlin.collections.lastOrNull
-import kotlin.collections.set
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -58,11 +55,11 @@ sealed interface MutableCachingFlow<T> : CachingFlow<T> {
  * Creates a new [MutableCachingFlow] with the given supplier function.
  * The supplier function will be called to generate a new value when the flow is refreshed.
  * @param supplier The function to call to generate a new value.
- * @param validity The duration for which the cached value is valid.
+ * @param validity The non-negative duration for which the cached value is valid. Infinite by default.
  */
 fun <T> MutableCachingFlow(
     supplier: suspend () -> T,
-    validity: Duration ,
+    validity: Duration = Duration.INFINITE,
 ): MutableCachingFlow<T> = MutableCachingFlowImpl(supplier, validity)
 
 @OptIn(
@@ -74,33 +71,39 @@ private class MutableCachingFlowImpl<T>(
     private val supplier: suspend () -> T,
     private val validity: Duration = Duration.INFINITE,
 ) : MutableCachingFlow<T>, SharedFlow<T> {
-    private val state = MutableSharedFlow<T>(2, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val state = MutableSharedFlow<T>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     private val flow = state.onSubscription {
         autoRefresh()
     }
 
     private var lastRefresh: Instant = Instant.DISTANT_PAST
-    private var currentRefresh: Job? = null
+    private val refreshMutex = Mutex()
+
+    init {
+        require(validity >= Duration.ZERO) { "validity must be non-negative" }
+    }
 
     private suspend fun autoRefresh() {
-        // no need to worry about concurrent entry,
-        // as this should only ever run on the browser's event-loop (single-threaded)
-        currentRefresh?.join() // if a refresh is ongoing, wait for it to finish
-        // then check, if refresh is necessary. refresh if:
-        if (state.replayCache.isEmpty() // not fetched yet
-            || lastRefresh + validity < Clock.System.now() // expired
-            || (state.replayCache.lastOrNull() as? Result<*>)?.isFailure == true) { // last fetch failed
-            clear()
-            // coroutineScope() only returns, after the inner job is finished.
-            coroutineScope { currentRefresh = launch { refresh() } }
-            currentRefresh = null
+        refreshMutex.withLock {
+            if (needsRefresh()) {
+                clear()
+                refreshUnlocked()
+            }
         }
     }
+
+    private fun needsRefresh(): Boolean =
+        state.replayCache.isEmpty() ||
+            lastRefresh + validity < Clock.System.now() ||
+            (state.replayCache.lastOrNull() as? Result<*>)?.isFailure == true
 
     override val subscriptionCount by state::subscriptionCount
 
     override suspend fun setValue(value: T) {
-        state.emit(value)
+        refreshMutex.withLock {
+            state.emit(value)
+            lastRefresh = Clock.System.now()
+        }
     }
 
     override fun clear() {
@@ -108,13 +111,18 @@ private class MutableCachingFlowImpl<T>(
     }
 
     override suspend fun refresh() {
+        refreshMutex.withLock { refreshUnlocked() }
+    }
+
+    private suspend fun refreshUnlocked() {
         state.emit(supplier())
         lastRefresh = Clock.System.now()
     }
 
     override fun asCachingFlow() = ReadOnlyCachingFlow(this)
 
-    override val replayCache = flow.replayCache
+    override val replayCache: List<T>
+        get() = flow.replayCache
 
     override suspend fun collect(collector: FlowCollector<T>) = flow.collect(collector)
 }
@@ -152,8 +160,9 @@ interface CachingFlowMap<K, T> {
  * @param validity The duration for which the cached value is valid.
  * @param keepAlive The duration for which the map should ensure that an entry ([CachingFlow]) is kept alive,
  *                  even if there are no external references to it.
- * @implementation If [keepAlive] is non-zero, a maintenance job will run every [keepAlive] duration, which drops
+ * @implementation If [keepAlive] is finite and non-zero, a maintenance job runs every [keepAlive] duration and drops
  *                 strong references to entries, which haven't been accessed for at least [keepAlive] duration.
+ *                 Infinite keep-alive retains entries for the lifetime of this map without starting a job.
  */
 class MutableCachingFlowMap<K, T>(
     private val supplier: suspend (K) -> T,
@@ -165,7 +174,7 @@ class MutableCachingFlowMap<K, T>(
 
     init {
         require(keepAlive >= Duration.ZERO) { "keepAlive must be non-negative" }
-        if (keepAlive > Duration.ZERO) {
+        if (keepAlive > Duration.ZERO && keepAlive.isFinite()) {
             val weakThis = WeakReference<MutableCachingFlowMap<*, *>>(this)
             @OptIn(DelicateCoroutinesApi::class)
             GlobalScope.launch { maintenanceJob(weakThis, keepAlive) }

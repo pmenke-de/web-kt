@@ -14,7 +14,7 @@ import org.w3c.dom.Storage
 object DomUtil {
 
     /**
-     * Removes all child nodes from this node - which is no natively supported operation in browsers.
+     * Removes all child nodes from this node, which browsers do not expose as one native operation.
      * This implementation removes all children one by one, starting from the end, which is probably faster
      * than starting from the beginning.
      */
@@ -51,24 +51,7 @@ object DomUtil {
      * This is useful for dynamically constructing the `class` attribute of an HTML element.
      */
     fun joinClasses(vararg classes: String?): String {
-        // prematurely optimized `joinToString` for 0..2 elements
-        return if (classes.isEmpty()) {
-            ""
-        } else if (classes.size == 1) {
-            classes[0] ?: ""
-        } else if (classes.size == 2) {
-            if (classes[0].isNullOrBlank() && classes[1].isNullOrBlank()) {
-                ""
-            } else if (classes[0].isNullOrBlank()) {
-                classes[1] ?: ""
-            } else if (classes[1].isNullOrBlank()) {
-                classes[0] ?: ""
-            } else {
-                "${classes[0]} ${classes[1]}"
-            }
-        } else {
-            classes.filter { it?.isNotBlank() == true }.joinToString(" ")
-        }
+        return classes.filterNotNull().filter(String::isNotBlank).joinToString(" ")
     }
 
     /**

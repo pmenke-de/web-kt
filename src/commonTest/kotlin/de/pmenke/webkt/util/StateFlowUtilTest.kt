@@ -2,6 +2,7 @@ package de.pmenke.webkt.util
 
 import de.pmenke.webkt.util.StateFlowUtil.flatMapStateLatest
 import de.pmenke.webkt.util.StateFlowUtil.mapState
+import de.pmenke.webkt.util.StateFlowUtil.stateCombine
 import de.pmenke.webkt.util.StateFlowUtil.times
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -9,6 +10,7 @@ import kotlinx.coroutines.asPromise
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import kotlin.js.Promise
@@ -113,6 +115,18 @@ class StateFlowUtilTest {
             "Value is 3",
             "Value is 4",
         ), collector)
+        job.cancel()
+    }.asPromise()
+
+    @Test
+    fun combinesAnEmptyFlowListAsAConstantState(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        val combined = emptyList<StateFlow<Int>>().stateCombine { values -> values.sum() }
+        val collector = mutableListOf<Int>()
+        val job = launch { combined.collect { collector += it } }
+
+        yield()
+        assertEquals(0, combined.value)
+        assertEquals(listOf(0), collector)
         job.cancel()
     }.asPromise()
 }

@@ -18,10 +18,6 @@ class Callbacks {
     // Note: type-coupling between key and callback cannot be represented in the map type
     private val callbacks = mutableMapOf<CallbackKey<*>, MutableMap<CallbackId, (Nothing) -> Unit>>()
 
-    // keep a list of deferred removals to avoid concurrent modification on removal during notification
-    private val deferredRemovals = mutableListOf<CallbackHandle>()
-    private var notifying = false
-
     /**
      * Subscribes a [callback] under the given [key].
      * Returns a [CallbackHandle] that can be used to unsubscribe the callback.
@@ -38,21 +34,15 @@ class Callbacks {
      * If no [errorHandler] is provided, exceptions will be propagated.
      */
     fun <T> notify(key: CallbackKey<T>, payload: T, errorHandler: ((Throwable) -> Unit)? = null) {
-        notifying = true
-        try {
-            callbacks[key]?.values?.forEach {
-                try {
-                    @Suppress("UNCHECKED_CAST")
-                    (it as (T) -> Unit)(payload) // may cause deferred removals
-                } catch (t: Throwable) {
-                    errorHandler?.invoke(t) ?: throw t
-                }
+        // Snapshotting makes notification deterministic and safe when callbacks subscribe,
+        // unsubscribe, clear the key, or recursively notify from inside a callback.
+        callbacks[key]?.values?.toList()?.forEach {
+            try {
+                @Suppress("UNCHECKED_CAST")
+                (it as (T) -> Unit)(payload)
+            } catch (t: Throwable) {
+                errorHandler?.invoke(t) ?: throw t
             }
-        } finally {
-            notifying = false
-            // process deferred removals
-            deferredRemovals.forEach { it.unsubscribe() }
-            deferredRemovals.clear()
         }
     }
 
@@ -71,23 +61,35 @@ class Callbacks {
         callbacks.remove(key)
     }
 
+    /** Removes every callback from this registry. */
+    fun clear() {
+        callbacks.clear()
+    }
+
     internal fun remove(handle: CallbackHandle) {
-        if (notifying) {
-            deferredRemovals.add(handle)
-            return
+        callbacks[handle.key]?.let { callbacksForKey ->
+            callbacksForKey.remove(handle.id)
+            if (callbacksForKey.isEmpty()) callbacks.remove(handle.key)
         }
-        callbacks[handle.key]?.remove(handle.id)
     }
 }
 
+/** Type-safe identity key for a family of callbacks carrying [T]. Keys use reference identity. */
 /* non-data*/ class CallbackKey<T>(val name: String)
+/** Creates a callback key with no payload. */
 fun CallbackKey(name: String) = CallbackKey<Unit>(name)
 
+/** Idempotent subscription handle returned by [Callbacks.subscribe]. */
 class CallbackHandle(private val registry: Callbacks, internal val key: CallbackKey<*>, internal val id: CallbackId) {
+    private var subscribed = true
+
     /**
      * Unsubscribes the callback associated with this handle.
      */
     fun unsubscribe() {
-        registry.remove(this)
+        if (subscribed) {
+            subscribed = false
+            registry.remove(this)
+        }
     }
 }

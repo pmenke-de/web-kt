@@ -156,34 +156,36 @@ object StateFlowUtil {
     }
 
     @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-    fun <T, R> Iterable<StateFlow<T>>.stateCombine(combiner: (List<T>)->R): StateFlow<R> = object : StateFlow<R> {
-        private var lastInputs: List<T> = this@stateCombine.map { it.value }
-        private var lastValue: R = combiner(lastInputs)
-        override val value: R get() = this@stateCombine.map { it.value }.let { currentInputs ->
-            if (currentInputs != lastInputs) {
-                lastInputs = currentInputs
-                lastValue = combiner(lastInputs)
+    /** Combines an arbitrary number of state flows while retaining synchronous [StateFlow.value] access. */
+    fun <T, R> Iterable<StateFlow<T>>.stateCombine(combiner: (List<T>)->R): StateFlow<R> {
+        val inputFlows = toList()
+        return object : StateFlow<R> {
+            private var lastInputs: List<T> = inputFlows.map { it.value }
+            private var lastValue: R = combiner(lastInputs)
+            override val value: R get() = inputFlows.map { it.value }.let { currentInputs ->
+                if (currentInputs != lastInputs) {
+                    lastInputs = currentInputs
+                    lastValue = combiner(lastInputs)
+                }
+                lastValue
             }
-            lastValue
-        }
-        override suspend fun collect(collector: FlowCollector<R>): Nothing {
-            val flows = this@stateCombine.toList()
-            if (flows.isEmpty()) {
-                // if an empty list of StateFlows is combined, the combiner is only called once with an empty list,
-                // and then never emit again (as the inputs can never change).
-                collector.emit(combiner(emptyList()))
-                suspendCancellableCoroutine<Nothing> { } // suspend forever (until canceled)
+            override suspend fun collect(collector: FlowCollector<R>): Nothing {
+                if (inputFlows.isEmpty()) {
+                    // If no inputs exist, emit the current value once and then remain a state flow forever.
+                    collector.emit(value)
+                    suspendCancellableCoroutine<Nothing> { }
+                }
+                // combine wants reified T to construct a typed array.
+                // Array<Any?> is sufficient because values are only exposed again as List<T>.
+                @Suppress("UNCHECKED_CAST")
+                combine<Any?, R>(inputFlows) { items ->
+                    combiner(items.toList() as List<T>)
+                }.collect(collector)
+                throw IllegalStateException("unreachable @stateCombineN#collect")
             }
-            // combine wants reified T to construct a typed array.
-            // we just trust, that Array<Any?> will do.
-            @Suppress("UNCHECKED_CAST")
-            combine<Any?, R>(flows) { items ->
-                combiner(items.toList() as List<T>)
-            }.collect(collector)
-            throw IllegalStateException("unreachable @stateCombineN#collect")
+            override val replayCache: List<R>
+                get() = listOf(value)
         }
-        override val replayCache: List<R>
-            get() = listOf(value)
     }
 
     /**
