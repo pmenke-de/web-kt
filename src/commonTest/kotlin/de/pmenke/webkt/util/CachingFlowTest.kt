@@ -43,11 +43,12 @@ class CachingFlowTest {
         }.asPromise()
 
     @Test
-    fun inheritedReadOnlyFlowStillAutoRefreshes(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+    fun freshCachedValueIsReusedByLaterSubscribers(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
         var supplierCalls = 0
-        val readOnly: CachingFlow<Int> = MutableCachingFlow(supplier = { ++supplierCalls }).asCachingFlow()
+        val cache = MutableCachingFlow(supplier = { ++supplierCalls }, validity = 1.minutes)
 
-        assertEquals(1, readOnly.first())
+        assertEquals(1, cache.values.first())
+        assertEquals(1, cache.values.first())
         assertEquals(1, supplierCalls)
     }.asPromise()
 

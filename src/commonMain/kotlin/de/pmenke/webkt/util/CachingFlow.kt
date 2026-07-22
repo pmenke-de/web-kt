@@ -18,13 +18,11 @@ import kotlin.time.Instant
  * cache is empty or stale. [refresh] and [clear] provide explicit cache control without exposing mutation of the
  * observation stream.
  */
-// only for private inheritance in this file
-@OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-sealed interface CachingFlow<T> : SharedFlow<T> {
+sealed interface CachingFlow<T> {
     /** The read-only stream of cached values, including automatic refresh when subscribers arrive. */
     val values: SharedFlow<T>
 
-    // primarily for debugging (delegated from MutableSharedFlow)
+    /** The number of active collectors of [values], exposed for diagnostics. */
     val subscriptionCount: StateFlow<Int>
 
     /**
@@ -66,15 +64,11 @@ fun <T> MutableCachingFlow(
     validity: Duration = Duration.INFINITE,
 ): MutableCachingFlow<T> = MutableCachingFlowImpl(supplier, validity)
 
-@OptIn(
-    ExperimentalCoroutinesApi::class,
-    // we inherit semi-safely, by delegating all known methods to an official implementation of the interface
-    ExperimentalForInheritanceCoroutinesApi::class
-)
+@OptIn(ExperimentalCoroutinesApi::class)
 private class MutableCachingFlowImpl<T>(
     private val supplier: suspend () -> T,
     private val validity: Duration = Duration.INFINITE,
-) : MutableCachingFlow<T>, SharedFlow<T> {
+) : MutableCachingFlow<T> {
     private val state = MutableSharedFlow<T>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val values: SharedFlow<T> = state.onSubscription {
         autoRefresh()
@@ -124,11 +118,6 @@ private class MutableCachingFlowImpl<T>(
     }
 
     override fun asCachingFlow() = ReadOnlyCachingFlow(this)
-
-    override val replayCache: List<T>
-        get() = values.replayCache
-
-    override suspend fun collect(collector: FlowCollector<T>) = values.collect(collector)
 }
 
 private class ReadOnlyCachingFlow<T>(mutable: MutableCachingFlow<T>) : CachingFlow<T> by mutable
