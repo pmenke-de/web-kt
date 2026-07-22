@@ -2,6 +2,7 @@
 
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+import org.gradle.api.publish.maven.MavenPublication
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -40,11 +41,8 @@ kotlin {
         browser {
             commonWebpackConfig {
                 devServer = (devServer ?: KotlinWebpackConfig.DevServer()).apply {
-                    static = (static ?: mutableListOf()).apply {
-                        add(project.rootDir.path)
-                    }
+                    static(project.rootDir.path)
                 }
-                output
                 sourceMaps = true
                 cssSupport {
                     enabled = true
@@ -54,14 +52,14 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
-            implementation(libs.koin.core)
-            implementation(libs.kotlin.browser)
-            implementation(libs.kotlin.web)
-            implementation(libs.kotlinx.browser)
-            implementation(libs.kotlinx.coroutines.core)
-            implementation(libs.kotlinx.datetime)
-            implementation(libs.kotlinx.html)
-            implementation(libs.kotlinx.serialization.json)
+            api(libs.koin.core)
+            api(libs.kotlin.browser)
+            api(libs.kotlin.web)
+            api(libs.kotlinx.browser)
+            api(libs.kotlinx.coroutines.core)
+            api(libs.kotlinx.datetime)
+            api(libs.kotlinx.html)
+            api(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -71,6 +69,34 @@ kotlin {
         }
         wasmJsTest.dependencies {
             implementation(kotlin("test"))
+        }
+    }
+}
+
+publishing {
+    publications.withType<MavenPublication>().configureEach {
+        pom {
+            name.set("WebKt")
+            description.set("A small component framework for Kotlin/Wasm browser applications")
+            url.set("https://github.com/pmenke-de/web-kt")
+            licenses {
+                license {
+                    name.set("Apache License, Version 2.0")
+                    url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                    distribution.set("repo")
+                }
+            }
+            developers {
+                developer {
+                    id.set("pmenke")
+                    name.set("Philipp Menke")
+                }
+            }
+            scm {
+                connection.set("scm:git:https://github.com/pmenke-de/web-kt.git")
+                developerConnection.set("scm:git:ssh://git@github.com/pmenke-de/web-kt.git")
+                url.set("https://github.com/pmenke-de/web-kt")
+            }
         }
     }
 }
