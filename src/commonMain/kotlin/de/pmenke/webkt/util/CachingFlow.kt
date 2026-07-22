@@ -12,15 +12,19 @@ import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
- * Kind of an extended middle ground between SharedFlow and StateFlow.
- * Intended for funneling server data to components, caching values between requests.
- * Allows components to explicitly clear the cache or trigger a refresh, which will make
- * the flow emit a new value.
+ * A refreshable value cache backed by [values].
+ *
+ * The observation stream replays the current cached value and automatically loads a value for a subscriber when the
+ * cache is empty or stale. [refresh] and [clear] provide explicit cache control without exposing mutation of the
+ * observation stream.
  */
 // only for private inheritance in this file
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
 sealed interface CachingFlow<T> : SharedFlow<T> {
-    // primarily for debugging (delegated from MutableStateFlow)
+    /** The read-only stream of cached values, including automatic refresh when subscribers arrive. */
+    val values: SharedFlow<T>
+
+    // primarily for debugging (delegated from MutableSharedFlow)
     val subscriptionCount: StateFlow<Int>
 
     /**
@@ -72,7 +76,7 @@ private class MutableCachingFlowImpl<T>(
     private val validity: Duration = Duration.INFINITE,
 ) : MutableCachingFlow<T>, SharedFlow<T> {
     private val state = MutableSharedFlow<T>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    private val flow = state.onSubscription {
+    override val values: SharedFlow<T> = state.onSubscription {
         autoRefresh()
     }
 
@@ -122,19 +126,19 @@ private class MutableCachingFlowImpl<T>(
     override fun asCachingFlow() = ReadOnlyCachingFlow(this)
 
     override val replayCache: List<T>
-        get() = flow.replayCache
+        get() = values.replayCache
 
-    override suspend fun collect(collector: FlowCollector<T>) = flow.collect(collector)
+    override suspend fun collect(collector: FlowCollector<T>) = values.collect(collector)
 }
 
 private class ReadOnlyCachingFlow<T>(mutable: MutableCachingFlow<T>) : CachingFlow<T> by mutable
 
 /**
  * Uses [SharedFlow.onSubscription] to launch a refresh of the cached value, when the resulting flow is subscribed to.
- * The refresh happens in the given [CoroutineScope] asynchronously, so that a cached values can be observed before
+ * The refresh happens in the given [CoroutineScope] asynchronously, so that a cached value can be observed before
  * the refresh completes.
  */
-fun <T> CachingFlow<T>.onSubscriptionRefreshIn(coroutineScope: CoroutineScope) = onSubscription {
+fun <T> CachingFlow<T>.onSubscriptionRefreshIn(coroutineScope: CoroutineScope) = values.onSubscription {
     coroutineScope.launch { refresh() }
 }
 

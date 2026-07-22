@@ -12,6 +12,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlin.js.Promise
 import kotlin.test.Test
@@ -28,6 +31,62 @@ import kotlin.time.Instant
 
 class CachingFlowTest {
     @Test
+    fun readOnlyViewExposesTheAutoRefreshingValueStream(): Promise<JsAny?> =
+        CoroutineScope(Dispatchers.Main).async {
+            var supplierCalls = 0
+            val cache = MutableCachingFlow(supplier = { ++supplierCalls }, validity = 1.minutes)
+            val readOnly = cache.asCachingFlow()
+
+            assertEquals(1, readOnly.values.first())
+            assertEquals(listOf(1), readOnly.values.replayCache)
+            assertEquals(1, supplierCalls)
+        }.asPromise()
+
+    @Test
+    fun inheritedReadOnlyFlowStillAutoRefreshes(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        var supplierCalls = 0
+        val readOnly: CachingFlow<Int> = MutableCachingFlow(supplier = { ++supplierCalls }).asCachingFlow()
+
+        assertEquals(1, readOnly.first())
+        assertEquals(1, supplierCalls)
+    }.asPromise()
+
+    @Test
+    fun subscriptionRefreshEmitsTheCachedValueBeforeItsAsynchronousRefresh(): Promise<JsAny?> =
+        CoroutineScope(Dispatchers.Main).async {
+            val refreshStarted = CompletableDeferred<Unit>()
+            val cachedValueObserved = CompletableDeferred<Unit>()
+            val allowRefresh = CompletableDeferred<Unit>()
+            val cache = MutableCachingFlow(
+                supplier = {
+                    refreshStarted.complete(Unit)
+                    allowRefresh.await()
+                    2
+                },
+                validity = 1.minutes,
+            )
+            cache.setValue(1)
+            val refreshOwner = CoroutineScope(coroutineContext + Job())
+
+            try {
+                val collection = async {
+                    cache.onSubscriptionRefreshIn(refreshOwner)
+                        .onEach { if (it == 1) cachedValueObserved.complete(Unit) }
+                        .take(2)
+                        .toList()
+                }
+
+                refreshStarted.await()
+                cachedValueObserved.await()
+                allowRefresh.complete(Unit)
+
+                assertEquals(listOf(1, 2), collection.await())
+            } finally {
+                refreshOwner.cancel()
+            }
+        }.asPromise()
+
+    @Test
     fun replaysOnlyTheCurrentCachedValue(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
         var supplierCalls = 0
         val cache = MutableCachingFlow(supplier = { ++supplierCalls }, validity = 1.minutes)
@@ -35,8 +94,8 @@ class CachingFlowTest {
         cache.setValue(1)
         cache.setValue(2)
 
-        assertEquals(listOf(2), cache.replayCache)
-        assertEquals(2, cache.first())
+        assertEquals(listOf(2), cache.values.replayCache)
+        assertEquals(2, cache.values.first())
         assertEquals(0, supplierCalls)
     }.asPromise()
 
@@ -50,7 +109,7 @@ class CachingFlowTest {
         }, validity = 1.minutes)
 
         val values = coroutineScope {
-            listOf(async { cache.first() }, async { cache.first() }).awaitAll()
+            listOf(async { cache.values.first() }, async { cache.values.first() }).awaitAll()
         }
 
         assertEquals(listOf(42, 42), values)
@@ -65,8 +124,8 @@ class CachingFlowTest {
             if (supplierCalls == 1) Result.failure(IllegalStateException("first")) else Result.success(2)
         }, validity = 1.minutes)
 
-        assertEquals(true, cache.first().isFailure)
-        assertEquals(Result.success(2), cache.first())
+        assertEquals(true, cache.values.first().isFailure)
+        assertEquals(Result.success(2), cache.values.first())
         assertEquals(2, supplierCalls)
     }.asPromise()
 
