@@ -213,8 +213,6 @@ content as authentic. The `audiences` property supports both standards-compliant
 
 - [Architecture and lifecycle](docs/architecture.md)
 - [Downstream compatibility and migration notes](docs/downstream-compatibility.md)
-- [Refactoring log](docs/refactoring/refactoring-log.md)
-- [Quality metrics](docs/refactoring/quality-metrics.md)
 
 Public APIs also carry KDoc next to their implementation. The repository intentionally keeps documentation
 close to the behavior it describes.
@@ -223,8 +221,8 @@ close to the behavior it describes.
 
 WebKt uses semantic-version-shaped coordinates but has not reached a stable API. Before 1.0, incompatible
 changes may occur when they fix lifecycle or correctness defects. Such changes must be recorded in the
-downstream compatibility document. The current hardening pass remains source-compatible with the two
-checked-in consumers; identified consumer-side issues are documented rather than edited.
+downstream compatibility document. The current version remains source-compatible with the two checked-in
+consumers; identified consumer-side issues are documented rather than edited.
 
 ## License
 
