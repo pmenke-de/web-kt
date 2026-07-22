@@ -17,6 +17,11 @@ internal data class PrefixMap<T: Any>(val root: TrieNode<T> = TrieNode(mutableMa
         currentNode.value = value
     }
 
+    fun clear() {
+        root.children.clear()
+        root.value = null
+    }
+
     fun longestPrefixMatch(key: String): T? {
         var currentNode = root
         var longestValue: T? = root.value

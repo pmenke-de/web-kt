@@ -128,6 +128,7 @@ interface SortElement {
 enum class SortDirection(val classSuffix: String, val ariaLabel: String) {
     ASC("-asc", "aufsteigend"), DESC("-desc", "absteigend"), NONE("-none", "unsortiert");
 
+    /** Returns the next direction in the `NONE -> ASC -> DESC -> NONE` cycle. */
     fun cycle() = when (this) {
         ASC -> DESC
         DESC -> NONE
@@ -137,6 +138,7 @@ enum class SortDirection(val classSuffix: String, val ariaLabel: String) {
 
 private fun <T> noneComparator(): Comparator<T> = Comparator { _, _ -> 0 }
 
+/** Renders an accessible link that cycles [element], preserving other sorts while Alt is held. */
 fun RenderReceiver.sortLink(element: SortElement) {
     a(href = "#") {
         onClickFunction = { e ->
@@ -152,6 +154,7 @@ fun RenderReceiver.sortLink(element: SortElement) {
     }
 }
 
+/** Sorts successful list values using the comparator currently exposed by [sortControls]. */
 fun <T> Flow<Result<List<T>>?>.sortedWith(sortControls: SortControls<T>): Flow<Result<List<T>>?> =
     combine(sortControls.comparator) { result, comparator ->
         result?.map { list -> list.sortedWith(comparator) }

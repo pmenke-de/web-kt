@@ -14,4 +14,14 @@ object ConsoleUtil {
     fun Console.error(vararg args: Any?) {
         error(*args.map { it?.toJsAny() }.toTypedArray())
     }
+
+    /** Writes Kotlin values through the browser console's informational channel. */
+    fun Console.info(vararg args: Any?) {
+        info(*args.map { it?.toJsAny() }.toTypedArray())
+    }
+
+    /** Writes Kotlin values through the browser console's warning channel. */
+    fun Console.warn(vararg args: Any?) {
+        warn(*args.map { it?.toJsAny() }.toTypedArray())
+    }
 }

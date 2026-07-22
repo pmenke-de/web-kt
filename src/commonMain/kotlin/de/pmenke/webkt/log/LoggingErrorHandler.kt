@@ -7,5 +7,5 @@ import kotlinx.coroutines.CoroutineExceptionHandler
  */
 @Suppress("FunctionName")
 fun LoggingErrorHandler(logger: Logger): CoroutineExceptionHandler = CoroutineExceptionHandler { context, throwable ->
-    logger.error { "unhandled exception in coroutine-context $context: $throwable\n${throwable.printStackTrace()}" }
+    logger.error { "unhandled exception in coroutine-context $context: ${throwable.stackTraceToString()}" }
 }
