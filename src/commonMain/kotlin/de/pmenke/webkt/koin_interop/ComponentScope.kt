@@ -5,6 +5,7 @@ import de.pmenke.webkt.js_interop.JsObject
 import de.pmenke.webkt.js_interop.WeakReference
 import de.pmenke.webkt.log.Logger
 import de.pmenke.webkt.log.LoggingAspect
+import de.pmenke.webkt.util.IdGenerator
 import js.memory.FinalizationRegistry
 import org.koin.core.component.KoinComponent
 import org.koin.core.scope.Scope
@@ -21,8 +22,14 @@ private val LOG = Logger("de.pmenke.webkt.koin_interop.ComponentScope")
 class ComponentScope(component: Component, finalizationCanary: JsAny) : KoinComponent {
     private val componentRef = WeakReference(component)
 
-    /** The Koin scope exposed to children created during the render. */
-    val scope: Scope = getKoin().createScope<ComponentScope>("ComponentScope-${component.id}", this)
+    /**
+     * The Koin scope exposed to children created during the render.
+     * Its identifier is unique per render so a prepared replacement can overlap the current render until commit.
+     */
+    val scope: Scope = getKoin().createScope<ComponentScope>(
+        "ComponentScope-${component.id}-${IdGenerator.next}",
+        this,
+    )
 
     /** Owning component while it remains reachable. */
     val component: Component

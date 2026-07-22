@@ -123,7 +123,25 @@ remaining subscribers can opt into explicit error handling with
 on a parameterless notification from being mistaken for a subscription.
 
 `AfterRender` runs after the element has been created or updated. During the first call, the caller may
-not yet have inserted the returned element into the document.
+not yet have inserted the returned element into the document. Its subscribers run after commit, so a subscriber
+failure is propagated without rolling the committed render back. Cleanup and callback failures are aggregated
+after the remaining component commit actions have been attempted.
+
+Updates are transactional: WebKt builds replacement children off the live element, swaps them in only after
+rendering succeeds, and then closes the previous render lifetime. An unhandled failure keeps the previous DOM
+and lifetime and is surfaced to browser error reporting. A component that is an application update error boundary
+can render fallback contents explicitly:
+
+```kotlin
+override fun RenderReceiver.renderFailure(exception: Throwable): Boolean {
+    p(classes = "render-error") { +"This section could not be rendered." }
+    return true
+}
+```
+
+The failed update attempt is already cleaned before this hook runs. Returning `false` rethrows the failure.
+Initial render failures always clean up and throw synchronously; they are never offered to this hook. WebKt does
+not diff successful renders and still replaces all children of that component root.
 
 ## Routing and navigation
 

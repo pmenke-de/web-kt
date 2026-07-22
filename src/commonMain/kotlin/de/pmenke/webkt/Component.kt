@@ -1,6 +1,5 @@
 package de.pmenke.webkt
 
-import de.pmenke.webkt.dom_interop.DomUtil.removeAllChildren
 import de.pmenke.webkt.js_interop.JsObject
 import de.pmenke.webkt.js_interop.WeakReference
 import de.pmenke.webkt.koin_interop.ComponentCoroutineScope
@@ -27,8 +26,95 @@ import org.koin.core.scope.Scope
 import org.koin.core.scope.ScopeCallback
 import org.w3c.dom.Element
 import org.w3c.dom.HTMLElement
+import org.w3c.dom.Node
 
 private val LOG = Logger("de.pmenke.webkt.Component")
+
+@JsFun("(element, replacement) => element.replaceChildren(replacement)")
+private external fun replaceChildrenNative(element: HTMLElement, replacement: Node)
+
+private fun materializeRootNative(
+    tagName: String,
+    consumer: TagConsumer<Element>,
+    initialAttributes: Map<String, String>,
+): HTMLElement {
+    val tag = HTMLTag(tagName, consumer, initialAttributes, inlineTag = false, emptyTag = false)
+    return tag.visitAndFinalize(consumer) {} as HTMLElement
+}
+
+/** Internal failure-injection seam for transactional DOM commit tests. */
+internal object ComponentRenderHooks {
+    var replaceChildren: (HTMLElement, Node) -> Unit = ::replaceChildrenNative
+    var materializeRoot: (String, TagConsumer<Element>, Map<String, String>) -> HTMLElement =
+        ::materializeRootNative
+
+    fun reset() {
+        replaceChildren = ::replaceChildrenNative
+        materializeRoot = ::materializeRootNative
+    }
+}
+
+private fun runAll(vararg actions: () -> Unit) {
+    var failure: Throwable? = null
+    actions.forEach { action ->
+        try {
+            action()
+        } catch (exception: Throwable) {
+            if (failure == null) failure = exception else failure.addSuppressed(exception)
+        }
+    }
+    failure?.let { throw it }
+}
+
+/** Carries post-commit work through nested component renders without exposing it in [RenderReceiver]. */
+private interface TransactionalRenderConsumer {
+    val renderTransaction: RenderTransaction
+}
+
+private class RenderTransaction {
+    private data class Entry(
+        val commit: () -> Unit,
+        val rollback: () -> Unit,
+    )
+
+    private val entries = mutableListOf<Entry>()
+
+    fun checkpoint(): Int = entries.size
+
+    fun rollbackTo(checkpoint: Int) {
+        var failure: Throwable? = null
+        while (entries.size > checkpoint) {
+            try {
+                entries.removeLast().rollback()
+            } catch (exception: Throwable) {
+                if (failure == null) failure = exception else failure.addSuppressed(exception)
+            }
+        }
+        failure?.let { throw it }
+    }
+
+    fun afterCommit(block: () -> Unit) {
+        entries += Entry(commit = block, rollback = {})
+    }
+
+    fun onCommit(commit: () -> Unit, rollback: () -> Unit) {
+        entries += Entry(commit, rollback)
+    }
+
+    fun commit() {
+        val committedEntries = entries.toList()
+        entries.clear()
+        var failure: Throwable? = null
+        committedEntries.forEach { entry ->
+            try {
+                entry.commit()
+            } catch (exception: Throwable) {
+                if (failure == null) failure = exception else failure.addSuppressed(exception)
+            }
+        }
+        failure?.let { throw it }
+    }
+}
 
 /**
  * # Components
@@ -55,8 +141,8 @@ private val LOG = Logger("de.pmenke.webkt.Component")
  *
  * To retrieve child-components in [renderContents] use [getComponent][RenderReceiver.getComponent], which will automatically pass the
  * current component as its parent and the current render's [RenderReceiver.scope] as the child-components scope.
- * Internally each call to [updateContents] or [renderTo] creates a new render lifetime, disposing all child-components
- * of the last render run automatically.
+ * Internally each call to [updateContents] or [renderTo] prepares a new render lifetime. It becomes active only
+ * after rendering succeeds; the last successful lifetime and its child-components are then disposed automatically.
  * You can also use [getComponent][Component.getComponent] from outside [renderContents] / a [RenderReceiver] and bind
  * them to an instance-field (for example) which will inherit the components scope to the child-component directly
  * (sharing the same lifecycle), which is useful, if you want some child-components to persist state across [renderContents] calls.
@@ -134,10 +220,10 @@ abstract class Component(
     protected val componentContext: HierarchicalAttributeStore = HierarchicalAttributeStore(parent?.componentContext)
 
     /**
-     * [Scope] that determines the lifecycle of child-components retrieved during [renderContents] calls.
-     * A new scope is created for each rendering of the component, so that
-     * resources and coroutines, created by child-components during rendering,
-     * will be closed / cancelled, when the component is re-rendered.
+     * The lifetime of the last successfully rendered child tree.
+     *
+     * A replacement is first prepared in isolation. A failed attempt closes only its own resources, while a
+     * successful attempt becomes current and then closes this previous lifetime.
      */
     private var currentRenderLifetime: RenderLifetime? = null
 
@@ -183,18 +269,123 @@ abstract class Component(
     protected abstract fun RenderReceiver.renderContents()
 
     /**
-     * Closes the previous render lifetime, creates a new one, and returns its [RenderReceiver].
+     * Handles an exception thrown while building this component's contents.
+     *
+     * Override this at an application error boundary and render fallback contents into the receiver. Return
+     * `true` only when the failure has been handled. The failed update attempt is discarded and its render
+     * lifetime is closed before this method runs. Initial render failures are never offered to a boundary: they
+     * always clean up and throw synchronously. If this method returns `false` (the default), the original update
+     * exception is rethrown. An exception from the fallback is also propagated.
+     *
+     * A boundary also sees unhandled failures from descendants, because they propagate through the parent's
+     * render attempt. During an update, successfully rendered fallback contents are committed normally;
+     * otherwise the component retains its last successful contents and render lifetime.
      */
-    private fun TagConsumer<Element>.newRenderReceiver(): RenderReceiver {
-        currentRenderLifetime?.close()
-        val renderLifetime = RenderLifetime(this@Component, finalizationCanary).also {
-            this@Component.currentRenderLifetime = it
-        }
-        return object : RenderReceiver, TagConsumer<Element> by this {
+    protected open fun RenderReceiver.renderFailure(exception: Throwable): Boolean = false
+
+    private fun TagConsumer<Element>.renderReceiver(
+        renderLifetime: RenderLifetime,
+        transaction: RenderTransaction,
+    ): RenderReceiver {
+        return object : RenderReceiver, TransactionalRenderConsumer, TagConsumer<Element> by this {
             override val scope: Scope = renderLifetime.scope
             override val component: Component = this@Component
             override val coroutineScope: CoroutineScope = renderLifetime.coroutineScope
             override val componentContext: HierarchicalAttributeStore = this@Component.componentContext
+            override val renderTransaction: RenderTransaction = transaction
+        }
+    }
+
+    /** Result of building one complete set of contents away from the live component element. */
+    private data class RenderAttempt(
+        val contents: HTMLElement,
+        val lifetime: RenderLifetime,
+        val transactionCheckpoint: Int,
+    )
+
+    /**
+     * Builds replacement children in a detached staging element.
+     *
+     * The current render lifetime is deliberately not changed here. A failed attempt owns all children and
+     * coroutines that it created and closes them before the failure is propagated or offered to the boundary.
+     */
+    private fun buildRenderAttempt(
+        transaction: RenderTransaction,
+        allowFailureBoundary: Boolean,
+    ): RenderAttempt {
+        fun attempt(block: RenderReceiver.() -> Unit): RenderAttempt {
+            val callbackCheckpoint = transaction.checkpoint()
+            // A neutral staging element avoids invoking a registered custom-element constructor for `tagName`.
+            val contents = kotlinx.browser.document.createElement("div") as HTMLElement
+            val lifetime = RenderLifetime(this, finalizationCanary)
+            try {
+                contents.append {
+                    renderReceiver(lifetime, transaction).block()
+                    finalizeAllowingEmptyContents()
+                }
+                return RenderAttempt(contents, lifetime, callbackCheckpoint)
+            } catch (exception: Throwable) {
+                try {
+                    transaction.rollbackTo(callbackCheckpoint)
+                } catch (rollbackFailure: Throwable) {
+                    exception.addSuppressed(rollbackFailure)
+                }
+                try {
+                    lifetime.close()
+                } catch (cleanupFailure: Throwable) {
+                    exception.addSuppressed(cleanupFailure)
+                }
+                throw exception
+            }
+        }
+
+        return try {
+            attempt { renderContents() }
+        } catch (failure: Throwable) {
+            if (!allowFailureBoundary) throw failure
+            try {
+                var handled = false
+                val fallback = attempt { handled = renderFailure(failure) }
+                if (handled) {
+                    fallback
+                } else {
+                    discardRenderAttempt(transaction, fallback, failure)
+                    throw failure
+                }
+            } catch (boundaryFailure: Throwable) {
+                if (boundaryFailure !== failure) boundaryFailure.addSuppressed(failure)
+                throw boundaryFailure
+            }
+        }
+    }
+
+    private fun discardRenderAttempt(
+        transaction: RenderTransaction,
+        attempt: RenderAttempt,
+        failure: Throwable,
+    ) {
+        try {
+            transaction.rollbackTo(attempt.transactionCheckpoint)
+        } catch (rollbackFailure: Throwable) {
+            failure.addSuppressed(rollbackFailure)
+        }
+        try {
+            attempt.lifetime.close()
+        } catch (cleanupFailure: Throwable) {
+            failure.addSuppressed(cleanupFailure)
+        }
+    }
+
+    private fun ensureActiveForCommit() {
+        check(!disposed) { "Component '$id' was disposed while rendering" }
+    }
+
+    private fun TagConsumer<Element>.finalizeAllowingEmptyContents() {
+        try {
+            finalize()
+        } catch (exception: IllegalStateException) {
+            // kotlinx.html rejects an empty DOM consumer even though empty component contents are valid.
+            if (exception.message != "We can't finalize as there was no tags") throw exception
         }
     }
 
@@ -203,19 +394,58 @@ abstract class Component(
      *
      * Note: Use [render] instead of `component.renderTo(this@renderContents)` within [renderContents],
      *       as the former is more concise.
+     *
+     * During detached construction, a nested component exposes its candidate [currentElement] so established
+     * render-time DOM setup remains possible. That state is tentative: if the containing transaction is discarded,
+     * its previous element, back-reference, and render lifetime are restored before the failure is propagated.
      */
     fun renderTo(consumer: TagConsumer<Element>): HTMLElement {
         check(!disposed) { "Component '$id' cannot be rendered after its lifecycle scope was closed" }
         LOG.debug(LoggingAspect.RENDERING) { "[$id] renderTo" }
-        val tag = HTMLTag(tagName, consumer, initialAttributes, inlineTag = false, emptyTag = false)
-        val element = tag.visitAndFinalize(consumer) { consumer.newRenderReceiver().renderContents() } as HTMLElement
+        val inheritedTransaction = (consumer as? TransactionalRenderConsumer)?.renderTransaction
+        val transaction = inheritedTransaction ?: RenderTransaction()
+        val attempt = buildRenderAttempt(transaction, allowFailureBoundary = false)
+        val element = try {
+            ensureActiveForCommit()
+            val materializeRoot = ComponentRenderHooks.materializeRoot
+            // Materialization is the standalone render's DOM commit point.
+            ensureActiveForCommit()
+            materializeRoot(tagName, consumer, initialAttributes).also { newElement ->
+                while (attempt.contents.firstChild != null) {
+                    newElement.appendChild(attempt.contents.firstChild!!)
+                }
+                ensureActiveForCommit()
+            }
+        } catch (exception: Throwable) {
+            discardRenderAttempt(transaction, attempt, exception)
+            throw exception
+        }
+        val oldRenderLifetime = currentRenderLifetime
+        val oldElement = this.element
+        currentRenderLifetime = attempt.lifetime
         // back-reference to us, so we can find our component from the DOM element
         // and keep us from being garbage collected, as long as the element is reachable.
         this.element?.takeIf { it !== element }?.componentKt = null
         element.componentKt = this
         this.element = element
-        // callback for listeners which want to modify `element` after rendering
-        callbacks.notify(LifecycleCallbacks.AfterRender)
+        transaction.onCommit(
+            commit = {
+                runAll(
+                    { oldRenderLifetime?.close() },
+                    { callbacks.notify(LifecycleCallbacks.AfterRender) },
+                )
+            },
+            rollback = {
+                if (currentRenderLifetime === attempt.lifetime) {
+                    currentRenderLifetime = oldRenderLifetime
+                    this.element?.takeIf { it !== oldElement }?.componentKt = null
+                    oldElement?.componentKt = this
+                    this.element = oldElement
+                    attempt.lifetime.close()
+                }
+            },
+        )
+        if (inheritedTransaction == null) transaction.commit()
         return element
     }
 
@@ -230,6 +460,8 @@ abstract class Component(
      * request that this component re-renders its contents on the next animation frame.
      * Multiple calls to this function before the next animation frame only result in a single re-render.
      * The rendering runs asynchronously, so the function returns immediately.
+     * An unhandled rendering failure is logged and rethrown from the animation-frame callback so browser error
+     * reporting can observe it. Override [renderFailure] at an explicit boundary to render a fallback instead.
      */
     fun requestUpdate() {
         if (!disposed && animationRequest == null) {
@@ -241,6 +473,7 @@ abstract class Component(
                     LOG.error(LoggingAspect.RENDERING) {
                         "[$id] uncaught exception during rendering of [$this]: ${e.stackTraceToString()}"
                     }
+                    throw e
                 }
             }
         }
@@ -249,22 +482,38 @@ abstract class Component(
     /**
      * re-renders the contents of this component immediately.
      * This function is called as a result of calling [requestUpdate] on the next animation frame.
+     *
+     * Replacement contents are built away from [currentElement]. On success, the DOM is replaced in one browser
+     * operation before the previous render lifetime is closed. On failure, the attempted lifetime is closed and
+     * the last successful DOM and lifetime remain active.
      */
     protected open fun updateContents() {
         val e = currentElement ?: return
         LOG.debug(LoggingAspect.RENDERING, currentElement) { "[$id] updateContents" }
-        e.removeAllChildren()
-        e.append {
-            newRenderReceiver().renderContents()
-            try {
-                finalize()
-            } catch (e: IllegalStateException) {
-                // finalize breaks, if nothing was rendered
-                if (e.message != "We can't finalize as there was no tags") throw e
+        val transaction = RenderTransaction()
+        val attempt = buildRenderAttempt(transaction, allowFailureBoundary = true)
+        try {
+            ensureActiveForCommit()
+            val fragment = e.ownerDocument!!.createDocumentFragment()
+            while (attempt.contents.firstChild != null) {
+                fragment.appendChild(attempt.contents.firstChild!!)
             }
+            ensureActiveForCommit()
+            ComponentRenderHooks.replaceChildren(e, fragment)
+            ensureActiveForCommit()
+        } catch (exception: Throwable) {
+            discardRenderAttempt(transaction, attempt, exception)
+            throw exception
         }
-        // callback for listeners which want to modify `element` after rendering
-        callbacks.notify(LifecycleCallbacks.AfterRender)
+        val oldRenderLifetime = currentRenderLifetime
+        currentRenderLifetime = attempt.lifetime
+        transaction.afterCommit {
+            runAll(
+                { oldRenderLifetime?.close() },
+                { callbacks.notify(LifecycleCallbacks.AfterRender) },
+            )
+        }
+        transaction.commit()
     }
 
     /**
@@ -318,6 +567,7 @@ abstract class Component(
              * Fired after the component's element has been created or its contents have been updated.
              * On the initial render the caller may not have inserted the returned element into the document yet.
              * Intended for DOM operations that cannot be expressed while rendering.
+             * Subscriber failures happen after the render has committed and therefore do not roll it back.
              */
             val AfterRender = CallbackKey("afterRender")
 
