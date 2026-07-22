@@ -164,30 +164,96 @@ interface CachingFlowMap<K, T> {
  *                 strong references to entries, which haven't been accessed for at least [keepAlive] duration.
  *                 Infinite keep-alive retains entries for the lifetime of this map without starting a job.
  */
-class MutableCachingFlowMap<K, T>(
+class MutableCachingFlowMap<K, T> private constructor(
     private val supplier: suspend (K) -> T,
-    private val validity: Duration = Duration.INFINITE,
-    private val keepAlive: Duration = Duration.ZERO,
-) : CachingFlowMap<K, T> {
+    private val validity: Duration,
+    private val keepAlive: Duration,
+    maintenanceOwner: CoroutineScope?,
+    private val now: () -> Instant,
+    private val waitForMaintenance: suspend (Duration) -> Unit,
+) : CachingFlowMap<K, T>, AutoCloseable {
     private val state = mutableMapOf<K, CacheFlowMapEntry<T>>()
     private val deadKeys = mutableSetOf<K>()
+    private var closed = false
+    private var maintenanceLifetimeJob: Job? = null
+    internal var maintenanceJob: Job? = null
+        private set
 
     init {
-        require(keepAlive >= Duration.ZERO) { "keepAlive must be non-negative" }
-        if (keepAlive > Duration.ZERO && keepAlive.isFinite()) {
+        validateDurations(validity, keepAlive)
+        require(!requiresMaintenance(keepAlive) || maintenanceOwner != null) {
+            "finite, non-zero keepAlive requires a caller-owned CoroutineScope; " +
+                "use MutableCachingFlowMap(coroutineScope, supplier, validity, keepAlive)"
+        }
+        require(maintenanceOwner == null || maintenanceOwner.coroutineContext[Job] != null) {
+            "coroutineScope must contain a Job so cache maintenance has an explicit owner"
+        }
+        if (requiresMaintenance(keepAlive)) {
             val weakThis = WeakReference<MutableCachingFlowMap<*, *>>(this)
-            @OptIn(DelicateCoroutinesApi::class)
-            GlobalScope.launch { maintenanceJob(weakThis, keepAlive) }
+            // Snapshot constructor properties before creating the worker. Its closure must retain only these
+            // values and the weak map reference, otherwise the owner job would keep the cache alive forever.
+            val maintenanceInterval = keepAlive
+            val maintenanceWait = waitForMaintenance
+            val ownerJob = maintenanceOwner!!.coroutineContext[Job]!!
+            val lifetimeJob = SupervisorJob(ownerJob)
+            val maintenanceScope = CoroutineScope(maintenanceOwner.coroutineContext + lifetimeJob)
+            val job = maintenanceScope.launch {
+                runCacheMaintenance(weakThis, maintenanceInterval, maintenanceWait)
+            }
+            maintenanceLifetimeJob = lifetimeJob
+            maintenanceJob = job
+            job.invokeOnCompletion {
+                weakThis.deref()?.close()
+                // Detach the private supervisor even when the cache has already been collected.
+                lifetimeJob.cancel()
+            }
         }
     }
 
+    /**
+     * Creates a cache with no maintenance owner.
+     *
+     * This constructor is valid only when [keepAlive] is zero or infinite, because those modes do not run a
+     * maintenance coroutine. Use the scope-taking constructor for a finite, non-zero keep-alive.
+     */
+    constructor(
+        supplier: suspend (K) -> T,
+        validity: Duration = Duration.INFINITE,
+        keepAlive: Duration = Duration.ZERO,
+    ) : this(supplier, validity, keepAlive, null, Clock.System::now, { delay(it) })
+
+    /**
+     * Creates a keyed cache whose finite keep-alive maintenance is owned by [coroutineScope].
+     *
+     * The scope must contain a [Job]. For a finite, non-zero [keepAlive], cancelling that job stops maintenance
+     * and closes the map. Maintenance is isolated behind a private supervisor, so its failure and explicit map
+     * closure never cancel the caller's job or its other children.
+     *
+     * Zero and infinite keep-alive modes start no maintenance and therefore are not closed by owner cancellation;
+     * their owner must still call [close] to release retained entries deterministically.
+     */
+    constructor(
+        coroutineScope: CoroutineScope,
+        supplier: suspend (K) -> T,
+        validity: Duration = Duration.INFINITE,
+        keepAlive: Duration = Duration.ZERO,
+    ) : this(
+        supplier = supplier,
+        validity = validity,
+        keepAlive = keepAlive,
+        maintenanceOwner = coroutineScope,
+        now = Clock.System::now,
+        waitForMaintenance = { delay(it) },
+    )
+
     private fun makeFlow(key: K): CacheFlowMapEntry<T> {
         val cachingFlow = MutableCachingFlowImpl({ supplier(key) }, validity)
-        return if (keepAlive > Duration.ZERO) StrongCacheFlowMapEntry(cachingFlow)
+        return if (keepAlive > Duration.ZERO) StrongCacheFlowMapEntry(cachingFlow, now)
                else CacheFlowMapEntry(WeakReference(cachingFlow))
     }
 
     override fun get(key: K): MutableCachingFlow<T> {
+        checkOpen()
         return (state[key]?.deref() ?: makeFlow(key).also { state[key] = it }.deref()!!).also { removeDeadKeys() }
     }
 
@@ -196,6 +262,7 @@ class MutableCachingFlowMap<K, T>(
      * so that future [CachingFlow.refresh]s on them will still work.
      */
     fun clearAll() {
+        checkOpen()
         state.keys.forEach { key ->
             getOrNull(key)?.clear()
         }
@@ -205,7 +272,26 @@ class MutableCachingFlowMap<K, T>(
     /**
      * Creates a read-only view of this map, which can be handed out to frontend components.
      */
-    fun asCachingFlowMap(): CachingFlowMap<K, T> = ReadOnlyCachingFlowMap(this)
+    fun asCachingFlowMap(): CachingFlowMap<K, T> {
+        checkOpen()
+        return ReadOnlyCachingFlowMap(this)
+    }
+
+    /** Stops private maintenance, detaches it from its owner, and releases all entries. Repeated calls are safe. */
+    override fun close() {
+        if (closed) return
+        closed = true
+        maintenanceJob?.cancel()
+        maintenanceJob = null
+        maintenanceLifetimeJob?.cancel()
+        maintenanceLifetimeJob = null
+        state.clear()
+        deadKeys.clear()
+    }
+
+    private fun checkOpen() {
+        check(!closed) { "MutableCachingFlowMap is closed" }
+    }
 
     private fun removeDeadKeys() {
         deadKeys.forEach { key -> state.remove(key) }
@@ -223,20 +309,50 @@ class MutableCachingFlowMap<K, T>(
     }
 
     private fun maintain() {
-        val now = Clock.System.now()
+        if (closed) return
+        val now = now()
         state.values.forEach { entry ->
             (entry as? StrongCacheFlowMapEntry<T>)?.clearExpired(now, keepAlive)
         }
     }
 
     companion object {
-        private suspend fun maintenanceJob(instance: WeakReference<MutableCachingFlowMap<*, *>>, interval: Duration) {
-            while(true) {
-                delay(interval)
+        internal fun <K, T> createForTesting(
+            coroutineScope: CoroutineScope?,
+            supplier: suspend (K) -> T,
+            validity: Duration = Duration.INFINITE,
+            keepAlive: Duration = Duration.ZERO,
+            now: () -> Instant = Clock.System::now,
+            waitForMaintenance: suspend (Duration) -> Unit = { delay(it) },
+        ) = MutableCachingFlowMap(supplier, validity, keepAlive, coroutineScope, now, waitForMaintenance)
+
+        private fun validateDurations(validity: Duration, keepAlive: Duration) {
+            require(validity >= Duration.ZERO) { "validity must be non-negative" }
+            require(keepAlive >= Duration.ZERO) { "keepAlive must be non-negative" }
+        }
+
+        private fun requiresMaintenance(keepAlive: Duration) =
+            keepAlive > Duration.ZERO && keepAlive.isFinite()
+
+        private suspend fun runCacheMaintenance(
+            instance: WeakReference<MutableCachingFlowMap<*, *>>,
+            interval: Duration,
+            waitForMaintenance: suspend (Duration) -> Unit,
+        ) {
+            while (true) {
+                waitForMaintenance(interval)
                 instance.deref()?.maintain() ?: break
             }
         }
     }
+
+    internal fun maintainNowForTesting() = maintain()
+
+    internal val entryCountForTesting: Int
+        get() = state.size
+
+    internal val retainedEntryCountForTesting: Int
+        get() = state.values.count { (it as? StrongCacheFlowMapEntry<T>)?.isRetained == true }
 }
 
 private class ReadOnlyCachingFlowMap<K, T>(private val mutable: MutableCachingFlowMap<K, T>) : CachingFlowMap<K, T> {
@@ -251,18 +367,24 @@ private open class CacheFlowMapEntry<T>(
     }
 }
 
-private class StrongCacheFlowMapEntry<T>(cachingFlow: MutableCachingFlow<T>) : CacheFlowMapEntry<T>(WeakReference(cachingFlow)) {
+private class StrongCacheFlowMapEntry<T>(
+    cachingFlow: MutableCachingFlow<T>,
+    private val now: () -> Instant,
+) : CacheFlowMapEntry<T>(WeakReference(cachingFlow)) {
     private var strongEntry: MutableCachingFlow<T>? = cachingFlow
-    private var lastAccess: Instant = Clock.System.now()
+    private var lastAccess: Instant = now()
 
     override fun deref(): MutableCachingFlow<T>? {
-        lastAccess = Clock.System.now()
+        lastAccess = now()
         return strongEntry ?: (super.deref()?.also { strongEntry = it })
     }
 
     fun clearExpired(now: Instant, keepAlive: Duration) {
-        if (lastAccess + keepAlive < now) {
+        if (lastAccess + keepAlive <= now) {
             strongEntry = null
         }
     }
+
+    val isRetained: Boolean
+        get() = strongEntry != null
 }

@@ -217,7 +217,29 @@ subscriber. `clear()` invalidates without fetching, while `refresh()` fetches im
 
 Use `MutableCachingFlowMap` for keyed resources. `keepAlive` controls how long the map keeps a strong
 reference to an otherwise unused entry; zero uses weak entries immediately and infinity keeps them for the
-map's lifetime.
+map's lifetime. A finite, non-zero keep-alive needs an explicitly owned coroutine scope:
+
+```kotlin
+val cacheOwner = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+val usersById = MutableCachingFlowMap(
+    coroutineScope = cacheOwner,
+    supplier = api::fetchUser,
+    validity = 10.minutes,
+    keepAlive = 10.minutes,
+)
+
+// During owner shutdown:
+usersById.close() // cancels only this map's maintenance and releases its entries
+cacheOwner.cancel()
+```
+
+The supplied scope must contain a `Job`. For finite keep-alive, cancelling it stops maintenance and closes the
+map. Maintenance runs under a cache-private supervisor: a maintenance failure closes that cache without
+cancelling the caller's job or sibling work, and closing the map likewise never cancels the caller's scope.
+`close()` is idempotent, and map operations (including previously obtained read-only views) fail fast afterward.
+The scope-free constructor remains valid for zero and infinite keep-alive modes. Those modes start no
+maintenance coroutine, receive no owner-cancellation callback, and therefore still require explicit `close()`
+for deterministic entry release.
 
 ## Form values
 

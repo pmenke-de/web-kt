@@ -1,18 +1,30 @@
 package de.pmenke.webkt.util
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.asPromise
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlin.js.Promise
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 
 class CachingFlowTest {
     @Test
@@ -57,4 +69,206 @@ class CachingFlowTest {
         assertEquals(Result.success(2), cache.first())
         assertEquals(2, supplierCalls)
     }.asPromise()
+
+    @Test
+    fun finiteKeepAliveRequiresAnOwnedScope() {
+        val failure = assertFailsWith<IllegalArgumentException> {
+            MutableCachingFlowMap<Int, Int>({ it }, 1.minutes, 1.minutes)
+        }
+
+        assertTrue(failure.message.orEmpty().contains("caller-owned CoroutineScope"))
+    }
+
+    @Test
+    fun scopeTakingConstructorRequiresAJob() {
+        val joblessScope = object : CoroutineScope {
+            override val coroutineContext = Dispatchers.Main
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            MutableCachingFlowMap(joblessScope, { key: Int -> key }, keepAlive = 1.minutes)
+        }
+    }
+
+    @Test
+    fun zeroAndInfiniteKeepAliveStartNoMaintenanceJob() {
+        val zero = MutableCachingFlowMap<Int, Int>({ it })
+        val infinite = MutableCachingFlowMap<Int, Int>({ it }, keepAlive = Duration.INFINITE)
+
+        assertNull(zero.maintenanceJob)
+        assertNull(infinite.maintenanceJob)
+
+        zero.close()
+        infinite.close()
+    }
+
+    @Test
+    fun closeCancelsOnlyMaintenanceAndReleasesEntries(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        val ownerJob = Job()
+        val owner = CoroutineScope(coroutineContext + ownerJob)
+        val cache = MutableCachingFlowMap(owner, { key: Int -> key }, keepAlive = 1.minutes)
+        cache[1]
+        val readOnly = cache.asCachingFlowMap()
+        val maintenance = assertNotNull(cache.maintenanceJob)
+
+        cache.close()
+        cache.close()
+        maintenance.join()
+
+        assertFalse(maintenance.isActive)
+        assertTrue(ownerJob.isActive)
+        assertEquals(0, cache.entryCountForTesting)
+        assertFailsWith<IllegalStateException> { cache[2] }
+        assertFailsWith<IllegalStateException> { cache.clearAll() }
+        assertFailsWith<IllegalStateException> { cache.asCachingFlowMap() }
+        assertFailsWith<IllegalStateException> { readOnly[3] }
+        ownerJob.cancel()
+    }.asPromise()
+
+    @Test
+    fun cancellingTheOwnerStopsMaintenance(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        val ownerJob = Job()
+        val cache = MutableCachingFlowMap(
+            CoroutineScope(coroutineContext + ownerJob),
+            { key: Int -> key },
+            keepAlive = 1.minutes,
+        )
+        val maintenance = assertNotNull(cache.maintenanceJob)
+
+        ownerJob.cancel()
+        maintenance.join()
+
+        assertFalse(maintenance.isActive)
+        assertEquals(0, cache.entryCountForTesting)
+        assertFailsWith<IllegalStateException> { cache[1] }
+        cache.close()
+    }.asPromise()
+
+    @Test
+    fun keepAliveExpiresFromTheMostRecentAccess(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        val ownerJob = Job()
+        var now = Instant.fromEpochMilliseconds(0)
+        val cache = MutableCachingFlowMap.createForTesting(
+            coroutineScope = CoroutineScope(coroutineContext + ownerJob),
+            supplier = { key: Int -> key },
+            keepAlive = 10.milliseconds,
+            now = { now },
+            waitForMaintenance = { CompletableDeferred<Unit>().await() },
+        )
+        val externallyHeld = cache[1]
+        assertEquals(1, cache.retainedEntryCountForTesting)
+
+        now = Instant.fromEpochMilliseconds(5)
+        assertTrue(cache[1] === externallyHeld)
+        now = Instant.fromEpochMilliseconds(14)
+        cache.maintainNowForTesting()
+        assertEquals(1, cache.retainedEntryCountForTesting)
+
+        now = Instant.fromEpochMilliseconds(15)
+        cache.maintainNowForTesting()
+        assertEquals(0, cache.retainedEntryCountForTesting)
+        assertTrue(cache[1] === externallyHeld)
+
+        cache.close()
+        ownerJob.cancel()
+    }.asPromise()
+
+    @Test
+    fun closeWinsAgainstAWaitingMaintenanceCycle(): Promise<JsAny?> = CoroutineScope(Dispatchers.Main).async {
+        val ownerJob = Job()
+        val waiting = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val cache = MutableCachingFlowMap.createForTesting(
+            coroutineScope = CoroutineScope(coroutineContext + ownerJob),
+            supplier = { key: Int -> key },
+            keepAlive = 1.milliseconds,
+            waitForMaintenance = {
+                waiting.complete(Unit)
+                release.await()
+            },
+        )
+        cache[1]
+        val maintenance = assertNotNull(cache.maintenanceJob)
+        waiting.await()
+
+        cache.close()
+        release.complete(Unit)
+        maintenance.join()
+
+        assertEquals(0, cache.entryCountForTesting)
+        assertFalse(maintenance.isActive)
+        assertTrue(ownerJob.isActive)
+        ownerJob.cancel()
+    }.asPromise()
+
+    @Test
+    fun maintenanceFailureClosesCacheWithoutCancellingOrdinaryOwnerOrSibling(): Promise<JsAny?> =
+        CoroutineScope(Dispatchers.Main).async {
+            val failure = IllegalStateException("maintenance failed")
+            val reportedFailure = CompletableDeferred<Throwable>()
+            val handler = CoroutineExceptionHandler { _, throwable -> reportedFailure.complete(throwable) }
+            val ownerJob = Job()
+            val owner = CoroutineScope(coroutineContext + ownerJob + handler)
+            val siblingRelease = CompletableDeferred<Unit>()
+            val sibling = owner.launch { siblingRelease.await() }
+            val cache = MutableCachingFlowMap.createForTesting(
+                coroutineScope = owner,
+                supplier = { key: Int -> key },
+                keepAlive = 1.milliseconds,
+                waitForMaintenance = { throw failure },
+            )
+            cache[1]
+            val maintenance = assertNotNull(cache.maintenanceJob)
+
+            assertEquals(failure, reportedFailure.await())
+            maintenance.join()
+
+            assertFalse(maintenance.isActive)
+            assertTrue(ownerJob.isActive)
+            assertTrue(sibling.isActive)
+            assertEquals(0, cache.entryCountForTesting)
+            assertFailsWith<IllegalStateException> { cache[2] }
+
+            siblingRelease.complete(Unit)
+            sibling.join()
+            ownerJob.cancel()
+        }.asPromise()
+
+    @Test
+    fun maintenanceLoopDropsExpiredRetentionAfterItsWaitCompletes(): Promise<JsAny?> =
+        CoroutineScope(Dispatchers.Main).async {
+            val ownerJob = Job()
+            var now = Instant.fromEpochMilliseconds(0)
+            val firstWaitStarted = CompletableDeferred<Unit>()
+            val releaseFirstWait = CompletableDeferred<Unit>()
+            val secondWaitStarted = CompletableDeferred<Unit>()
+            var waitCount = 0
+            val cache = MutableCachingFlowMap.createForTesting(
+                coroutineScope = CoroutineScope(coroutineContext + ownerJob),
+                supplier = { key: Int -> key },
+                keepAlive = 10.milliseconds,
+                now = { now },
+                waitForMaintenance = {
+                    waitCount++
+                    if (waitCount == 1) {
+                        firstWaitStarted.complete(Unit)
+                        releaseFirstWait.await()
+                    } else {
+                        secondWaitStarted.complete(Unit)
+                        CompletableDeferred<Unit>().await()
+                    }
+                },
+            )
+            cache[1]
+            assertEquals(1, cache.retainedEntryCountForTesting)
+            firstWaitStarted.await()
+
+            now = Instant.fromEpochMilliseconds(10)
+            releaseFirstWait.complete(Unit)
+            secondWaitStarted.await()
+
+            assertEquals(0, cache.retainedEntryCountForTesting)
+            cache.close()
+            ownerJob.cancel()
+        }.asPromise()
 }
