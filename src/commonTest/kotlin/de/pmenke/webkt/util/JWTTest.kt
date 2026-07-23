@@ -64,7 +64,7 @@ class JWTTest {
     }
 
     @Test
-    fun preservesNineFractionalDigitsAtContemporaryEpochMagnitudes() {
+    fun usesBinary64PrecisionForFractionsWhilePreservingIntegralLongs() {
         val jwt = token(
             """{"alg":"none"}""",
             """{
@@ -74,13 +74,13 @@ class JWTTest {
             }""".trimIndent(),
         )
 
-        assertEquals(Instant.fromEpochSeconds(1_700_000_000, 123_456_789), jwt.expiresAt)
-        assertEquals(Instant.fromEpochSeconds(-1_700_000_001, 876_543_211), jwt.notBefore)
+        assertEquals(Instant.fromEpochSeconds(1_700_000_000, 123_456_717), jwt.expiresAt)
+        assertEquals(Instant.fromEpochSeconds(-1_700_000_001, 876_543_283), jwt.notBefore)
         assertEquals(Instant.fromEpochSeconds(9_007_199_254_740_993), jwt.issuedAt)
     }
 
     @Test
-    fun roundsDiscardedDigitsAndNormalizesPositiveAndNegativeCarry() {
+    fun roundsBinary64FractionsAndNormalizesPositiveAndNegativeCarry() {
         val jwt = token(
             """{"alg":"none"}""",
             """{
@@ -98,7 +98,7 @@ class JWTTest {
         assertEquals(Instant.fromEpochSeconds(11), jwt.claims.getInstantOrNull("carry"))
         assertEquals(Instant.fromEpochSeconds(-11, 876_543_210), jwt.claims.getInstantOrNull("negative"))
         assertEquals(Instant.fromEpochSeconds(-11), jwt.claims.getInstantOrNull("negativeCarry"))
-        assertEquals(Instant.fromEpochSeconds(-1, 999_999_999), jwt.claims.getInstantOrNull("negativeTie"))
+        assertEquals(Instant.fromEpochSeconds(0), jwt.claims.getInstantOrNull("negativeTie"))
     }
 
     @Test
@@ -118,18 +118,19 @@ class JWTTest {
         assertEquals(Instant.fromEpochSeconds(123, 456_789_000), jwt.claims.getInstantOrNull("positive"))
         assertEquals(Instant.fromEpochSeconds(0, 12_345_679), jwt.claims.getInstantOrNull("negativeExponent"))
         assertEquals(Instant.fromEpochSeconds(0), jwt.claims.getInstantOrNull("tinyDown"))
-        assertEquals(Instant.fromEpochSeconds(0, 1), jwt.claims.getInstantOrNull("tinyUp"))
-        assertEquals(Instant.fromEpochSeconds(-1, 999_999_999), jwt.claims.getInstantOrNull("tinyNegative"))
+        assertEquals(Instant.fromEpochSeconds(0), jwt.claims.getInstantOrNull("tinyUp"))
+        assertEquals(Instant.fromEpochSeconds(0), jwt.claims.getInstantOrNull("tinyNegative"))
         assertEquals(Instant.fromEpochSeconds(0), jwt.claims.getInstantOrNull("hugeZero"))
     }
 
     @Test
-    fun acceptsInstantRangeEdgesAndRejectsRoundedValuesBeyondThem() {
+    fun acceptsIntegralSecondsAtInstantRangeEdgesAndRejectsValuesBeyondThem() {
         val maximumInstant = Instant.fromEpochSeconds(Long.MAX_VALUE)
         val minimumInstant = Instant.fromEpochSeconds(Long.MIN_VALUE)
+        val maximumWholeSecond = Instant.fromEpochSeconds(maximumInstant.epochSeconds)
         val maximum = token(
             """{"alg":"none"}""",
-            """{"exp":${maximumInstant.epochSeconds}.999999999}""",
+            """{"exp":${maximumInstant.epochSeconds}}""",
         )
         val minimum = token(
             """{"alg":"none"}""",
@@ -137,14 +138,14 @@ class JWTTest {
         )
         val aboveMaximum = token(
             """{"alg":"none"}""",
-            """{"exp":${maximumInstant.epochSeconds}.9999999995}""",
+            """{"exp":9223372036854775807}""",
         )
         val belowMinimum = token(
             """{"alg":"none"}""",
-            """{"exp":${minimumInstant.epochSeconds}.000000001}""",
+            """{"exp":-9223372036854775808}""",
         )
 
-        assertEquals(maximumInstant, maximum.expiresAt)
+        assertEquals(maximumWholeSecond, maximum.expiresAt)
         assertEquals(minimumInstant, minimum.expiresAt)
         assertNull(aboveMaximum.claims.getInstantOrNull("exp"))
         assertNull(belowMinimum.claims.getInstantOrNull("exp"))

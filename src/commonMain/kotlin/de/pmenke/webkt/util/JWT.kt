@@ -3,6 +3,7 @@ package de.pmenke.webkt.util
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import kotlin.io.encoding.Base64
+import kotlin.math.round
 import kotlin.time.Instant
 
 /**
@@ -82,11 +83,9 @@ class UnverifiedJwtClaims(private val content: JsonObject) {
     /**
      * Returns a NumericDate claim as an [Instant], or `null` when absent or invalid.
      *
-     * Both integral and finite fractional JSON numbers are supported. Decimal digits beyond nanosecond
-     * precision are rounded to the nearest nanosecond, with exact ties rounded away from zero. Parsing
-     * uses the JSON number's decimal representation directly, so it does not lose precision through a
-     * floating-point conversion. JSON strings and values outside [Instant]'s representable range are
-     * rejected rather than coerced or saturated.
+     * Integral JSON numbers are converted exactly when they fit in a [Long]. Finite fractional and
+     * exponent forms use binary64 precision and are rounded to the nearest nanosecond using ties-to-even.
+     * JSON strings and values outside [Instant]'s representable range are rejected.
      */
     fun getInstantOrNull(key: String): Instant? =
         (content[key] as? JsonPrimitive)?.toNumericDateInstantOrNull()
@@ -108,131 +107,32 @@ private fun JsonPrimitive.toNumericDateInstantOrNull(): Instant? {
             ?.takeIf { it.epochSeconds == epochSeconds && it.nanosecondsOfSecond == 0 }
     }
 
-    val parsed = parseFractionalNumericDate(content) ?: return null
-    return runCatching { Instant.fromEpochSeconds(parsed.epochSeconds, parsed.nanosecondsOfSecond) }
+    val seconds = doubleOrNull?.takeIf { it.isFinite() } ?: return null
+    if (seconds < Long.MIN_VALUE.toDouble() || seconds >= -Long.MIN_VALUE.toDouble()) return null
+
+    val wholeSeconds = seconds.toLong()
+    val fractionalNanoseconds = (seconds - wholeSeconds.toDouble()) * NANOSECONDS_PER_SECOND.toDouble()
+    val roundedNanoseconds = round(fractionalNanoseconds).toLong()
+    val (normalizedSeconds, nanosecondsOfSecond) = when {
+        roundedNanoseconds < 0 -> {
+            if (wholeSeconds == Long.MIN_VALUE) return null
+            wholeSeconds - 1 to (NANOSECONDS_PER_SECOND + roundedNanoseconds).toInt()
+        }
+        roundedNanoseconds == NANOSECONDS_PER_SECOND -> {
+            if (wholeSeconds == Long.MAX_VALUE) return null
+            wholeSeconds + 1 to 0
+        }
+        else -> wholeSeconds to roundedNanoseconds.toInt()
+    }
+    return runCatching { Instant.fromEpochSeconds(normalizedSeconds, nanosecondsOfSecond) }
         .getOrNull()
         ?.takeIf {
-            it.epochSeconds == parsed.epochSeconds &&
-                it.nanosecondsOfSecond == parsed.nanosecondsOfSecond
+            it.epochSeconds == normalizedSeconds &&
+                it.nanosecondsOfSecond == nanosecondsOfSecond
         }
 }
 
-private data class ParsedNumericDate(
-    val epochSeconds: Long,
-    val nanosecondsOfSecond: Int,
-)
-
-private fun parseFractionalNumericDate(value: String): ParsedNumericDate? {
-    var numberStart = 0
-    val isNegative = value.startsWith('-')
-    if (isNegative) numberStart++
-
-    val exponentMarker = value.indexOfAny(charArrayOf('e', 'E'), startIndex = numberStart)
-    val mantissaEnd = exponentMarker.takeIf { it >= 0 } ?: value.length
-    val decimalPoint = value.indexOf('.', startIndex = numberStart).takeIf { it >= 0 && it < mantissaEnd }
-    if (numberStart >= mantissaEnd) return null
-
-    val integerEnd = decimalPoint ?: mantissaEnd
-    val integerDigits = value.substring(numberStart, integerEnd)
-    val fractionDigits = if (decimalPoint == null) "" else value.substring(decimalPoint + 1, mantissaEnd)
-    if (integerDigits.isEmpty() || integerDigits.any { it !in '0'..'9' }) return null
-    if (decimalPoint != null && (fractionDigits.isEmpty() || fractionDigits.any { it !in '0'..'9' })) return null
-
-    val exponent = if (exponentMarker < 0) {
-        0L
-    } else {
-        parseSaturatedExponent(value.substring(exponentMarker + 1)) ?: return null
-    }
-    val coefficient = integerDigits + fractionDigits
-    val firstNonZero = coefficient.indexOfFirst { it != '0' }
-    if (firstNonZero < 0) return ParsedNumericDate(0, 0)
-
-    val significantDigits = coefficient.substring(firstNonZero)
-    val decimalPosition = saturatedAdd(
-        saturatedAdd(integerDigits.length.toLong(), exponent),
-        -firstNonZero.toLong(),
-    )
-    if (decimalPosition > MAX_WHOLE_SECOND_DIGITS) return null
-
-    var wholeSecondsMagnitude = 0L
-    if (decimalPosition > 0) {
-        repeat(decimalPosition.toInt()) { index ->
-            val digit = significantDigits.getOrNull(index)?.let { it - '0' } ?: 0
-            if (wholeSecondsMagnitude > (Long.MAX_VALUE - digit) / 10) return null
-            wholeSecondsMagnitude = wholeSecondsMagnitude * 10 + digit
-        }
-    }
-
-    var nanosecondsMagnitude = 0
-    repeat(NANOSECOND_DIGITS) { fractionalIndex ->
-        val coefficientIndex = saturatedAdd(decimalPosition, fractionalIndex.toLong())
-        val digit = coefficientIndex
-            .takeIf { it >= 0 && it < significantDigits.length }
-            ?.toInt()
-            ?.let { significantDigits[it] - '0' }
-            ?: 0
-        nanosecondsMagnitude = nanosecondsMagnitude * 10 + digit
-    }
-
-    val firstDiscardedIndex = saturatedAdd(decimalPosition, NANOSECOND_DIGITS.toLong())
-    val firstDiscardedDigit = firstDiscardedIndex
-        .takeIf { it >= 0 && it < significantDigits.length }
-        ?.toInt()
-        ?.let { significantDigits[it] - '0' }
-        ?: 0
-    if (firstDiscardedDigit >= 5) {
-        nanosecondsMagnitude++
-        if (nanosecondsMagnitude == NANOSECONDS_PER_SECOND) {
-            if (wholeSecondsMagnitude == Long.MAX_VALUE) return null
-            wholeSecondsMagnitude++
-            nanosecondsMagnitude = 0
-        }
-    }
-
-    if (!isNegative) return ParsedNumericDate(wholeSecondsMagnitude, nanosecondsMagnitude)
-    if (nanosecondsMagnitude == 0) {
-        return ParsedNumericDate(-wholeSecondsMagnitude, 0)
-    }
-    if (wholeSecondsMagnitude == Long.MAX_VALUE) return null
-    return ParsedNumericDate(
-        epochSeconds = -(wholeSecondsMagnitude + 1),
-        nanosecondsOfSecond = NANOSECONDS_PER_SECOND - nanosecondsMagnitude,
-    )
-}
-
-private fun parseSaturatedExponent(value: String): Long? {
-    if (value.isEmpty()) return null
-    var index = 0
-    val isNegative = value[0] == '-'
-    if (isNegative || value[0] == '+') index++
-    if (index == value.length) return null
-
-    var magnitude = 0L
-    var saturated = false
-    while (index < value.length) {
-        val character = value[index]
-        if (character !in '0'..'9') return null
-        val digit = character - '0'
-        if (!saturated && magnitude > (Long.MAX_VALUE - digit) / 10) {
-            saturated = true
-        } else if (!saturated) {
-            magnitude = magnitude * 10 + digit
-        }
-        index++
-    }
-    if (saturated) return if (isNegative) Long.MIN_VALUE else Long.MAX_VALUE
-    return if (isNegative) -magnitude else magnitude
-}
-
-private fun saturatedAdd(left: Long, right: Long): Long = when {
-    right > 0 && left > Long.MAX_VALUE - right -> Long.MAX_VALUE
-    right < 0 && left < Long.MIN_VALUE - right -> Long.MIN_VALUE
-    else -> left + right
-}
-
-private const val MAX_WHOLE_SECOND_DIGITS = 19L
-private const val NANOSECOND_DIGITS = 9
-private const val NANOSECONDS_PER_SECOND = 1_000_000_000
+private const val NANOSECONDS_PER_SECOND = 1_000_000_000L
 
 /**
  * The "iss" (issuer) claim identifies the principal that issued the JWT. The processing of this
