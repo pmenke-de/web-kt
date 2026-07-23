@@ -184,14 +184,72 @@ cancelled by component cleanup.
 
 ## What an environment is
 
-A `ComponentEnvironment` is a **bridge**, not another component lifetime. It lets the DI-neutral component
-kernel ask an external integration for two things:
+A `ComponentEnvironment` is the integration configuration shared by one component tree. It exists so the
+component kernel can work with Koin—or another external framework—without depending on that framework
+directly. It is a **bridge**, not another component lifetime and not the owner of the component tree.
 
-1. Connect a successfully mounted root to an external owner.
-2. Create a closeable `RenderEnvironment` for each render attempt.
+The root chooses the environment. For example:
 
-Children inherit their parent’s `ComponentEnvironment`; application components do not pass it through every
-child constructor.
+```kotlin
+val environment = KoinComponentEnvironment(rootScope)
+val app = constructComponent { App(environment) }
+app.renderTo(document.body!!)
+```
+
+Constructing `App` stores the environment but does not attach the root to the integration yet. Attachment
+happens during the root’s first successful `renderTo(...)` call:
+
+1. WebKt builds the initial contents.
+2. It creates the root element through the target DOM consumer.
+3. It calls `environment.attachComponent(root, componentLifetime)` to connect the root lifetime.
+
+This is what **successfully mounted root** means here: the root’s initial render was built successfully, its
+element was materialized through the target consumer, and WebKt can now connect its lifetime to the external
+integration. If initial rendering fails before that point, WebKt closes the failed render attempt and does not
+attach the root. Later re-renders do not attach the root again.
+
+For example, `KoinComponentEnvironment` uses root attachment to observe the caller-owned Koin scope. If that
+scope closes, the adapter closes the root’s component lifetime. The environment does not take ownership of
+the caller’s Koin scope.
+
+### How children receive the environment
+
+When you write a child component, you do **not manually add and forward an environment constructor
+parameter**.
+
+A root constructor receives the environment explicitly:
+
+```kotlin
+class App(
+    environment: ComponentEnvironment,
+) : Component(environment, "app-root")
+```
+
+A child constructor receives only its non-null parent:
+
+```kotlin
+class Toolbar(
+    parent: Component,
+) : Component(parent, "app-toolbar")
+```
+
+The `Component(parent, ...)` constructor copies `parent.environment` into the child’s inherited public
+`environment` property. Consequently:
+
+- the child has access to the same `ComponentEnvironment` instance as its parent;
+- adapter functions can inspect that environment, as the Koin helpers do; and
+- the child constructor does not need a separate `ComponentEnvironment` parameter.
+
+“Inherits” therefore means automatic propagation through the `Component` base constructor. It does **not**
+mean that the environment is hidden from children.
+
+The shared component environment provides two integration hooks:
+
+1. `attachComponent(...)` connects the root lifetime to an external owner after the initial mount.
+2. `createRenderEnvironment(...)` creates a closeable, integration-specific resource for each render attempt.
+
+The second hook is per-render. For Koin, it supplies the private scope used to resolve render-owned child
+components. WebKt closes that render environment when the attempt fails, is replaced, or its component closes.
 
 If no integration is needed, a root can use `ComponentEnvironment.Empty`:
 
