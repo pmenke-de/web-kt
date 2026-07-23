@@ -37,8 +37,8 @@ Rendering and environment adapters establish the same boundary automatically.
 `ComponentEnvironment` is the integration boundary for a component tree. A root receives one explicitly;
 the `Component(parent, ...)` base constructor automatically copies that same environment into every child.
 Children can access the inherited public `environment` property, but their constructors do not need a separate
-environment parameter. The environment may connect a root to an external owner after its first successful
-`renderTo(...)` call and creates a `RenderEnvironment` for each render attempt.
+environment parameter. The environment may connect a root to an external owner after the initial render
+contents and root element have been created. It also creates a `RenderEnvironment` for each render attempt.
 
 An environment is an adapter, not an additional owner. The component kernel owns component and render
 lifetimes; the environment attaches external resources to those lifetimes.

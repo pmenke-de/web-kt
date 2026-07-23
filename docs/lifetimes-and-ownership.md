@@ -197,16 +197,15 @@ app.renderTo(document.body!!)
 ```
 
 Constructing `App` stores the environment but does not attach the root to the integration yet. Attachment
-happens during the root’s first successful `renderTo(...)` call:
+is attempted during the root’s first `renderTo(...)` call, after the first two steps below succeed:
 
 1. WebKt builds the initial contents.
 2. It creates the root element through the target DOM consumer.
 3. It calls `environment.attachComponent(root, componentLifetime)` to connect the root lifetime.
 
-This is what **successfully mounted root** means here: the root’s initial render was built successfully, its
-element was materialized through the target consumer, and WebKt can now connect its lifetime to the external
-integration. If initial rendering fails before that point, WebKt closes the failed render attempt and does not
-attach the root. Later re-renders do not attach the root again.
+If building the initial contents or creating the root element fails, WebKt closes the failed render attempt and
+does not call `attachComponent(...)`. If `attachComponent(...)` itself fails, WebKt closes the root and
+propagates the failure from `renderTo(...)`. Later renders do not call it again.
 
 For example, `KoinComponentEnvironment` uses root attachment to observe the caller-owned Koin scope. If that
 scope closes, the adapter closes the root’s component lifetime. The environment does not take ownership of
@@ -245,7 +244,8 @@ mean that the environment is hidden from children.
 
 The shared component environment provides two integration hooks:
 
-1. `attachComponent(...)` connects the root lifetime to an external owner after the initial mount.
+1. `attachComponent(...)` connects the root lifetime to an external owner during the first `renderTo(...)`
+   call, after the initial contents and root element have been created.
 2. `createRenderEnvironment(...)` creates a closeable, integration-specific resource for each render attempt.
 
 The second hook is per-render. For Koin, it supplies the private scope used to resolve render-owned child

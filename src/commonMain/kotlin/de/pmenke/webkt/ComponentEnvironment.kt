@@ -12,7 +12,8 @@ import kotlinx.coroutines.CoroutineScope
  */
 interface ComponentEnvironment {
     /**
-     * Attaches integration-specific ownership to a successfully mounted root [component].
+     * Attaches integration-specific ownership during the root [component]'s first [Component.renderTo]
+     * call, after its initial contents and DOM element have been created.
      *
      * Implementations may arrange for an external owner to close [lifetime]. They must not retain
      * [component] more strongly or longer than that owner requires.

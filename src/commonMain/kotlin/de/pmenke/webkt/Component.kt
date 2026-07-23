@@ -181,7 +181,7 @@ abstract class Component private constructor(
         }
     }
 
-    /** Releases a successfully constructed component to its caller before it is mounted. */
+    /** Releases a successfully constructed component from its construction transaction. */
     internal fun releaseFromConstruction() {
         ComponentConstruction.release(this)
     }
@@ -197,7 +197,7 @@ abstract class Component private constructor(
         ComponentConstruction.completeAdoption(child) { adoptPersistentChild(child) }
     }
 
-    /** Adopts this root after its first successful mount. */
+    /** Connects this root after its initial contents and DOM element have been created. */
     private fun adoptRoot() {
         check(parent == null) { "Only a root component can be adopted by its environment" }
         try {
@@ -392,7 +392,7 @@ abstract class Component private constructor(
      * render-time DOM setup remains possible. That state is tentative: if the containing transaction is discarded,
      * its previous element, back-reference, and render lifetime are restored before the failure is propagated.
      * A failed first root-environment attachment closes the root permanently. Failures from post-commit
-     * callbacks do not roll back the already mounted and owned root.
+     * callbacks do not roll back the already materialized and owned root.
      */
     fun renderTo(consumer: TagConsumer<Element>): HTMLElement {
         check(!disposed) { "Component '$id' cannot be rendered after its lifecycle was closed" }
