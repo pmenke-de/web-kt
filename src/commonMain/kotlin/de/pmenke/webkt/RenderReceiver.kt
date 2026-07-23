@@ -107,7 +107,7 @@ interface RenderReceiver : TagConsumer<Element> {
         classes: String = "",
         renderBlock: RenderReceiver.(T) -> Unit): Component {
         var currentValue = value.value
-        var initiallyRenderedValue: Any? = currentValue
+        var initiallyRenderedValue: T? = currentValue
         var awaitingFirstEmission = true
         val component = InlineComponent(component, tagName, classes.toInitialAttributes()) {
             renderBlock(currentValue)
@@ -118,8 +118,7 @@ interface RenderReceiver : TagConsumer<Element> {
             initiallyRenderedValue = null
             currentValue = update
             if (!isAlreadyRendered) component.requestUpdate()
-        }
-            .launchIn(coroutineScope)
+        }.launchIn(coroutineScope)
         component.renderTo(this)
         return component
     }

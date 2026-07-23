@@ -38,8 +38,8 @@ private class DerivedObservableValue<T>(
 /** Reuses one derived object while the input snapshot remains equal. */
 private class SnapshotTransform<I, O>(private val transform: (I) -> O) {
     private var initialized = false
-    private var lastInput: Any? = null
-    private var lastOutput: Any? = null
+    private var lastInput: I? = null
+    private var lastOutput: O? = null
 
     @Suppress("UNCHECKED_CAST")
     fun apply(input: I): O {
@@ -125,10 +125,11 @@ fun <A, B, C, D, R> ObservableValue<A>.combineValues(
     fourth: ObservableValue<D>,
     transform: (A, B, C, D) -> R,
 ): ObservableValue<R> = derivedObservableValue(
-    currentInput = { Tuple4(value, second.value, third.value, fourth.value) },
-    inputUpdates = combine(updates, second.updates, third.updates, fourth.updates, ::Tuple4),
+    currentInput = { listOf(value, second.value, third.value, fourth.value) },
+    inputUpdates = combine(updates, second.updates, third.updates, fourth.updates) { a,b,c,d -> listOf(a,b,c,d) },
     transform = { (first, secondValue, thirdValue, fourthValue) ->
-        transform(first, secondValue, thirdValue, fourthValue)
+        @Suppress("UNCHECKED_CAST")
+        transform(first as A, secondValue as B, thirdValue as C, fourthValue as D)
     },
 )
 

@@ -27,20 +27,16 @@ internal class RenderLifetime(
     val coroutineScope: CoroutineScope = lifetime
 
     /** Integration-specific context exposed while this render is being built. */
-    val environment: RenderEnvironment
-
-    init {
-        environment = try {
-            componentEnvironment.createRenderEnvironment(component, lifetime)
-                .also { resource -> lifetime.onClose(resource::close) }
-        } catch (exception: Throwable) {
-            try {
-                lifetime.close()
-            } catch (cleanupFailure: Throwable) {
-                exception.addSuppressed(cleanupFailure)
-            }
-            throw exception
+    val environment: RenderEnvironment = try {
+        componentEnvironment.createRenderEnvironment(component, lifetime)
+            .also { resource -> lifetime.onClose(resource::close) }
+    } catch (exception: Throwable) {
+        try {
+            lifetime.close()
+        } catch (cleanupFailure: Throwable) {
+            exception.addSuppressed(cleanupFailure)
         }
+        throw exception
     }
 
     /** Makes [component] a child resource of this render. */

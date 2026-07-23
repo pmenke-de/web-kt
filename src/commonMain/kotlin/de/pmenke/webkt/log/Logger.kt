@@ -4,7 +4,6 @@ import de.pmenke.webkt.js_interop.ConsoleUtil.error
 import de.pmenke.webkt.js_interop.ConsoleUtil.info
 import de.pmenke.webkt.js_interop.ConsoleUtil.log
 import de.pmenke.webkt.js_interop.ConsoleUtil.warn
-import de.pmenke.webkt.util.Debug.ifDebugEnabled
 import de.pmenke.webkt.util.PrefixMap
 import web.console.console
 
@@ -21,18 +20,14 @@ class Logger(
 
     /** Logs eager [args] at [LogLevel.DEBUG] when [aspect] or this logger's name is enabled. */
     fun debug(vararg args: Any?, aspect: LoggingAspect? = null) {
-        ifDebugEnabled {
-            if (!shouldLog(LogLevel.DEBUG, aspect)) return
-            log(LogLevel.DEBUG, *args)
-        }
+        if (!shouldLog(LogLevel.DEBUG, aspect)) return
+        log(LogLevel.DEBUG, *args)
     }
 
     /** Builds and logs a debug message lazily, followed by [args], when its filter is enabled. */
     inline fun debug(aspect: LoggingAspect? = null, vararg args: Any?, messageBuilder: () -> String) {
-        ifDebugEnabled {
-            if (!shouldLog(LogLevel.DEBUG, aspect)) return
-            log(LogLevel.DEBUG, messageBuilder(), *args)
-        }
+        if (!shouldLog(LogLevel.DEBUG, aspect)) return
+        log(LogLevel.DEBUG, messageBuilder(), *args)
     }
 
     /** Logs eager [args] at [LogLevel.INFO] when [aspect] or this logger's name is enabled. */
