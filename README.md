@@ -147,6 +147,10 @@ fun main() {
 
 ## Component lifecycle
 
+If ownership, lifetimes, and environments are new concepts, start with
+[Lifetimes, ownership, and environments](docs/lifetimes-and-ownership.md). It explains the model with concrete
+examples and a decision guide.
+
 A root `Component(environment, tagName)` has no parent. A child `Component(parent, tagName)` inherits its
 parent's environment while keeping a non-null constructor parameter. Direct construction must use
 `constructComponent { ... }`, which cleans up partially initialized components if construction fails.
@@ -305,6 +309,7 @@ treating token content as authentic or making authorization decisions.
 
 ## Documentation
 
+- [Lifetimes, ownership, and environments](docs/lifetimes-and-ownership.md) — newcomer-oriented explanation
 - [Architecture and lifecycle](docs/architecture.md)
 
 Public APIs also carry KDoc next to their implementation.

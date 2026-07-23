@@ -4,6 +4,10 @@ WebKt is a small Kotlin/Wasm component kernel built directly on the browser DOM 
 Its core does not depend on a dependency-injection framework. State observation, browser services, and
 integration adapters are separate utilities around that kernel.
 
+This document is a compact architecture reference. New users should first read
+[Lifetimes, ownership, and environments](lifetimes-and-ownership.md), which explains the terminology and
+shows how to choose an owner in application code.
+
 ## Component tree
 
 Every component owns one custom HTML element and has either:
@@ -31,8 +35,11 @@ Rendering and environment adapters establish the same boundary automatically.
 ## Environments and ownership
 
 `ComponentEnvironment` is the integration boundary for a component tree. A root receives one explicitly;
-children inherit it from their parent. The environment may attach integration cleanup to the root and creates
-a `RenderEnvironment` for each render attempt.
+children inherit it from their parent. The environment may connect a successfully mounted root to an external
+owner and creates a `RenderEnvironment` for each render attempt.
+
+An environment is an adapter, not an additional owner. The component kernel owns component and render
+lifetimes; the environment attaches external resources to those lifetimes.
 
 ```text
 application owner
