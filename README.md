@@ -6,9 +6,6 @@ WebKt is a small, experimental component framework for Kotlin/Wasm browser appli
 type-safe `kotlinx.html` DSL with coroutine flows, explicit lifecycle ownership, and optional Koin-assisted
 component resolution. It is a focused library rather than a complete application platform.
 
-WebKt is pre-1.0 software. The two applications in `dist/` are compatibility fixtures and examples, but are
-not part of the library build.
-
 ## What it provides
 
 - A component tree with transactional raw-DOM rendering and deterministic lifecycles.
