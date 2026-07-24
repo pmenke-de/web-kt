@@ -325,3 +325,7 @@ lifecycle ownership, or the clarity of the public surface.
 ## License
 
 Apache License 2.0. See [LICENSE.txt](LICENSE.txt).
+
+## AI Usage
+
+Generative AI has been used extensively to refactor and extend this code-base from its initial MVP state.
