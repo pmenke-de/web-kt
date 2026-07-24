@@ -39,6 +39,9 @@ local consumer:
 
 The coordinates are `de.pmenke:web-kt:0.0.1-SNAPSHOT`.
 
+For a runnable application showing routing, component ownership, local persistence, a draggable Kanban board,
+a filterable task table, and real-DOM component tests, see the [Flowboard example](example/README.md).
+
 Public ABI changes are checked against the reference dump during `check`. After an intentional API change,
 review the diff produced by `./gradlew updateLegacyAbi` and commit the updated dump with the implementation.
 
