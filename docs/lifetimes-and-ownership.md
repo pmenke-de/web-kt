@@ -38,6 +38,8 @@ An owner promises to close what it owns. Ownership is not the same as a Kotlin r
 - A local variable may refer to a component without owning it.
 - A parent component owns its persistent children even if some service also refers to them.
 - A render owns its render-created children even though their DOM elements are attached elsewhere.
+- An already-owned child may be rendered through a descendant presentation component without becoming owned
+  by that intermediary.
 
 Ownership forms a tree:
 
@@ -58,6 +60,12 @@ the currently rendered subtree.
 
 Explicitly closing a child early is safe. WebKt detaches it from its owner so the owner no longer retains it
 or tries to close it again.
+
+Ownership and placement are separate. The declared parent determines the child's logical hierarchy and helps
+establish its initial owner. Once ownership has been established, the child may be placed through another
+descendant of that parent, such as a visibility region or sortable container. The original owner still closes
+the child. If the child is not owned yet, its first render must use the declared parent's receiver because an
+intermediary's receiver cannot unambiguously choose the intended lifetime.
 
 ## A component has two nested lifetimes
 

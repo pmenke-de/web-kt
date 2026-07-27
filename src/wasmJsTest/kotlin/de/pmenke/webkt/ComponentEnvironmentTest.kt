@@ -14,6 +14,7 @@ import org.koin.core.context.stopKoin
 import org.koin.dsl.koinApplication
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.module
+import org.w3c.dom.HTMLElement
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -513,6 +514,78 @@ class ComponentEnvironmentTest {
         assertEquals(1, childDisposals)
         root.close()
         assertEquals(1, childDisposals, "persistent child closes exactly once with its parent")
+    }
+
+    @Test
+    fun renderOwnedChildCanBePlacedThroughASiblingVisibilityComponent() {
+        var childDisposals = 0
+
+        class Child(parent: Component) : Component(parent, "placed-child") {
+            init {
+                callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
+            }
+
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        class Visibility(
+            parent: Component,
+            private val child: Child,
+        ) : Component(parent, "visibility-component") {
+            var visible = true
+
+            override fun RenderReceiver.renderContents() {
+                if (visible) render(child)
+            }
+
+            fun rerender() = updateContents()
+        }
+
+        val application = koinApplication {
+            modules(module {
+                factory { parameters -> Child(parameters.get()) }
+            })
+        }
+        val rootScope = application.koin.createScope<Unit>("intermediate-placement-root")
+
+        class Root : Component(KoinComponentEnvironment(rootScope), "app-root") {
+            lateinit var visibility: Visibility
+
+            override fun RenderReceiver.renderContents() {
+                val child = getKoinComponent<Child>()
+                visibility = Visibility(this@Root, child)
+                render(visibility)
+            }
+
+            fun rerender() = updateContents()
+        }
+
+        val root = constructComponent { Root() }
+        val rendered = document.createTree().run { root.renderTo(this); finalize() } as HTMLElement
+        assertEquals(
+            "<visibility-component><placed-child></placed-child></visibility-component>",
+            rendered.innerHTML,
+        )
+
+        root.visibility.visible = false
+        root.visibility.rerender()
+        assertEquals("<visibility-component></visibility-component>", rendered.innerHTML)
+        assertEquals(0, childDisposals, "hiding the placement must not close its sibling child")
+
+        root.visibility.visible = true
+        root.visibility.rerender()
+        assertEquals(
+            "<visibility-component><placed-child></placed-child></visibility-component>",
+            rendered.innerHTML,
+        )
+        assertEquals(0, childDisposals)
+
+        root.rerender()
+        assertEquals(1, childDisposals, "the declaring render still owns and closes the child")
+
+        root.close()
+        assertEquals(2, childDisposals, "the replacement render's child closes with the root")
+        rootScope.close()
     }
 
     @Test

@@ -47,7 +47,9 @@ internal interface OwningRenderReceiver {
  *
  * ## Child-Components
  * Components can have child-components, which are rendered within the parent's [renderContents] function.
- * Thus, they form a tree-hierarchy which mirrors the DOM-tree.
+ * The declared component hierarchy controls context, environment inheritance, and lifecycle ownership. An
+ * already-owned child may be placed through another descendant of its declared parent, so the component
+ * hierarchy does not have to mirror every intermediate DOM container.
  *
  * A render-environment adapter can resolve a child from render-owned resources and automatically
  * pass the current component as its parent.
@@ -139,6 +141,7 @@ abstract class Component private constructor(
      * successful attempt becomes current and then closes this previous lifetime.
      */
     private var currentRenderLifetime: RenderLifetime? = null
+    private var preparingRenderLifetime: RenderLifetime? = null
 
     // reference to the result of the last render.
     private var element: HTMLElement? = null
@@ -222,18 +225,34 @@ abstract class Component private constructor(
 
     /** Adopts this child into the receiver's successful render attempt. */
     private fun adoptRenderedChild(receiver: OwningRenderReceiver) {
-        require(parent === receiver.component) {
-            "Component '$id' must be rendered by its declared parent '${parent?.id}'"
-        }
-        if (lifecycleOwner === receiver.component.componentLifetime) {
-            // A persistent child may participate in any successful render of its owning parent.
-            // Rendering replaces only the child's own render lifetime; it must not transfer the
-            // component itself into the parent's short-lived render lifetime.
+        lifecycleOwner?.let { owner ->
+            val declaredParent = parent
+            require(receiver.component.isSelfOrDescendantOf(declaredParent)) {
+                "Component '$id' is owned by its declared parent '${parent?.id}' and can only be rendered " +
+                    "by that parent or one of its descendants, not '${receiver.component.id}'"
+            }
+            if (owner is RenderLifetime) {
+                val acceptingRender = declaredParent!!.preparingRenderLifetime
+                    ?: declaredParent.currentRenderLifetime
+                require(owner === acceptingRender) {
+                    "Render-owned component '$id' no longer belongs to the active render of its " +
+                        "declared parent '${declaredParent.id}'"
+                }
+            }
+            // Ownership was established independently from placement. Rendering through a descendant may
+            // replace this component's own render and DOM element, but must not transfer its lifecycle.
             releaseFromConstruction()
             return
         }
+        require(parent === receiver.component) {
+            "Unowned component '$id' must first be rendered by its declared parent '${parent?.id}', " +
+                "not '${receiver.component.id}'"
+        }
         adopt(receiver.renderLifetime) { receiver.renderLifetime.own(this) }
     }
+
+    private fun Component.isSelfOrDescendantOf(ancestor: Component?): Boolean =
+        ancestor != null && generateSequence(this as Component?) { it.parent }.any { it === ancestor }
 
     /** Adapter hook which adopts a successfully resolved child into this render. */
     internal fun adoptInto(receiver: RenderReceiver) {
@@ -318,13 +337,19 @@ abstract class Component private constructor(
             // A neutral staging element avoids invoking a registered custom-element constructor for `tagName`.
             val contents = kotlinx.browser.document.createElement("div") as HTMLElement
             val lifetime = RenderLifetime(this, finalizationCanary, environment)
+            val previousPreparingLifetime = preparingRenderLifetime
+            preparingRenderLifetime = lifetime
             try {
-                ComponentConstruction.run(block = {
-                    contents.append {
-                        renderReceiver(lifetime, transaction).block()
-                        finalizeAllowingEmptyContents()
-                    }
-                })
+                try {
+                    ComponentConstruction.run(block = {
+                        contents.append {
+                            renderReceiver(lifetime, transaction).block()
+                            finalizeAllowingEmptyContents()
+                        }
+                    })
+                } finally {
+                    preparingRenderLifetime = previousPreparingLifetime
+                }
                 return RenderAttempt(contents, lifetime, callbackCheckpoint)
             } catch (exception: Throwable) {
                 try {

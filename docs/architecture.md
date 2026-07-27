@@ -28,6 +28,12 @@ The public `parent` property remains nullable because code traversing an arbitra
 root. Child constructors need not accept a nullable parent. `parents`, `isRoot`, and `findAncestor<T>()`
 provide tree traversal.
 
+This declared hierarchy is the logical tree used for environment inheritance, hierarchical context, and
+lifecycle ownership. It normally resembles the DOM tree, but the two are not required to be identical.
+After a child has acquired an owner, it may be rendered through another descendant of its declared parent.
+This supports presentation-only intermediaries such as visibility regions and sortable containers without
+transferring the placed child's lifecycle to the intermediary.
+
 Direct construction must run inside `constructComponent { ... }`. This creates a construction transaction,
 so resources belonging to a partially initialized component are closed if a subclass initializer throws.
 Rendering and environment adapters establish the same boundary automatically.
@@ -74,6 +80,12 @@ multiple parent renders while keeping its component state; replacing a render st
 render lifetime. Persistent ownership does not memoize resolution: applications should resolve or construct
 each persistent child once into a property or `lazy` value and reuse that instance. Creating one during every
 render accumulates distinct children until the parent closes.
+
+Rendering does not transfer an already-owned component. Such a component can be placed by its declared parent
+or by any descendant of that parent while its original component or render lifetime remains responsible for
+closing it. An unowned component must first be rendered by its declared parent because an intermediary's render
+receiver cannot determine whether the child should belong to the declared parent's render or the
+intermediary's render. Unrelated component branches cannot place it.
 
 Closing a component deterministically closes its active render, descendants, coroutines, callbacks, and
 integration resources. Component-lifetime work uses the protected `coroutineScope`; work launched through

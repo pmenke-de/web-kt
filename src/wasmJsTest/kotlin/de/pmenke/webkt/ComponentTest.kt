@@ -130,6 +130,102 @@ class ComponentTest {
     }
 
     @Test
+    fun unownedChildCannotAcquireOwnershipThroughAnIntermediateDescendant() {
+        class Child(parent: Component) : Component(parent, "app-child") {
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        class Intermediate(
+            parent: Component,
+            private val declaredParent: Component,
+        ) : Component(parent, "app-intermediate") {
+            override fun RenderReceiver.renderContents() {
+                render(Child(declaredParent))
+            }
+        }
+
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                render(Intermediate(this@AppTest, this@AppTest))
+            }
+        }
+
+        val component = constructComponent { AppTest() }
+        val failure = assertFailsWith<IllegalArgumentException> {
+            document.createTree().run { component.renderTo(this); finalize() }
+        }
+
+        assertTrue(failure.message!!.startsWith("Unowned component 'app-child-"))
+        assertTrue(failure.message!!.contains("must first be rendered by its declared parent 'app-test-"))
+        component.close()
+    }
+
+    @Test
+    fun ownedChildCannotBeRenderedThroughAnUnrelatedComponentBranch() {
+        class Child(parent: Component) : Component(parent, "app-child") {
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        class Owner : Component(ComponentEnvironment.Empty, "app-owner") {
+            val child = Child(this)
+
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        val owner = constructComponent { Owner() }
+
+        class UnrelatedRoot : Component(ComponentEnvironment.Empty, "app-unrelated") {
+            override fun RenderReceiver.renderContents() {
+                render(owner.child)
+            }
+        }
+
+        val unrelated = constructComponent { UnrelatedRoot() }
+        val failure = assertFailsWith<IllegalArgumentException> {
+            document.createTree().run { unrelated.renderTo(this); finalize() }
+        }
+
+        assertTrue(failure.message!!.contains("can only be rendered by that parent or one of its descendants"))
+        assertTrue(failure.message!!.contains("not 'app-unrelated-"))
+        unrelated.close()
+        owner.close()
+    }
+
+    @Test
+    fun renderOwnedChildCannotBeReusedByAReplacementParentRender() {
+        var child: Component? = null
+        var childDisposals = 0
+
+        class Child(parent: Component) : Component(parent, "app-child") {
+            init {
+                callbacks.subscribe(Component.Companion.LifecycleCallbacks.Dispose) { childDisposals++ }
+            }
+
+            override fun RenderReceiver.renderContents() = Unit
+        }
+
+        class AppTest : Component(ComponentEnvironment.Empty, "app-test") {
+            override fun RenderReceiver.renderContents() {
+                val renderedChild = child ?: Child(this@AppTest).also { child = it }
+                render(renderedChild)
+            }
+
+            fun rerender() = updateContents()
+        }
+
+        val component = constructComponent { AppTest() }
+        document.createTree().run { component.renderTo(this); finalize() }
+
+        val failure = assertFailsWith<IllegalArgumentException> { component.rerender() }
+        assertTrue(failure.message!!.startsWith("Render-owned component 'app-child-"))
+        assertTrue(failure.message!!.contains("no longer belongs to the active render"))
+        assertEquals(0, childDisposals, "a failed replacement keeps the previous render active")
+
+        component.close()
+        assertEquals(1, childDisposals)
+    }
+
+    @Test
     fun rerenderClosesOldRenderCoroutineAndSubtreeExactlyOnce(): Promise<JsAny?> = coroutineScope.async {
         var childDisposals = 0
         lateinit var renderWork: Job
